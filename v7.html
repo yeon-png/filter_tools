@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>공기청정기 필터 통합 설계 대시보드</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #f8fafc;
+            --card-bg: rgba(255, 255, 255, 0.9);
+            --card-border: rgba(226, 232, 240, 0.8);
+            
+            /* 테마 컬러 */
+            --accent-main: #0f172a;
+            --accent-dust: #059669;
+            --accent-dust-glow: rgba(5, 150, 105, 0.15);
+            --accent-deo: #2563eb;
+            --accent-deo-glow: rgba(37, 99, 235, 0.15);
+            --accent-cyl: #7c3aed;
+            --accent-cyl-glow: rgba(124, 58, 237, 0.15);
+            --accent-cyl-comp: #e11d48;
+            --accent-cyl-comp-glow: rgba(225, 29, 72, 0.15);
+            
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --input-bg: #ffffff;
+            --input-border: #cbd5e1;
+            --font-family: 'Noto Sans KR', 'Montserrat', sans-serif;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(5, 150, 105, 0.05) 0px, transparent 60%),
+                radial-gradient(at 100% 100%, rgba(225, 29, 72, 0.05) 0px, transparent 60%);
+            color: var(--text-main);
+            font-family: var(--font-family);
+            min-height: 100vh;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        /* 헤더 */
+        header {
+            display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px;
+            padding: 18px 25px; background: var(--card-bg); border: 1px solid var(--card-border);
+            border-radius: 16px; backdrop-filter: blur(12px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+        }
+        .logo-area { display: flex; align-items: center; gap: 12px; }
+        .logo-area i { font-size: 1.8rem; color: var(--accent-main); }
+        .logo-area h1 { font-size: 1.4rem; font-weight: 700; letter-spacing: -0.5px; }
+        .app-desc { font-size: 0.9rem; color: var(--text-muted); font-weight: 500; }
+
+        /* 상단 모드 전환 탭 */
+        .mode-tabs {
+            display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap;
+        }
+        .tab-btn {
+            flex: 1; min-width: 140px; padding: 14px; background: #ffffff; border: 1px solid var(--card-border);
+            border-radius: 12px; font-size: 0.95rem; font-weight: 700; color: var(--text-muted);
+            cursor: pointer; transition: all 0.25s ease; display: flex; align-items: center;
+            justify-content: center; gap: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        }
+        .tab-btn:hover { background: #f1f5f9; color: var(--text-main); }
+        .tab-btn.active[data-mode="dust"] { background: var(--accent-dust); color: #fff; border-color: var(--accent-dust); box-shadow: 0 4px 14px var(--accent-dust-glow); }
+        .tab-btn.active[data-mode="deo"] { background: var(--accent-deo); color: #fff; border-color: var(--accent-deo); box-shadow: 0 4px 14px var(--accent-deo-glow); }
+        .tab-btn.active[data-mode="composite"] { background: var(--accent-main); color: #fff; border-color: var(--accent-main); box-shadow: 0 4px 14px rgba(15, 23, 42, 0.2); }
+        .tab-btn.active[data-mode="cylinder"] { background: var(--accent-cyl); color: #fff; border-color: var(--accent-cyl); box-shadow: 0 4px 14px var(--accent-cyl-glow); }
+        .tab-btn.active[data-mode="cyl_composite"] { background: var(--accent-cyl-comp); color: #fff; border-color: var(--accent-cyl-comp); box-shadow: 0 4px 14px var(--accent-cyl-comp-glow); }
+
+        /* 동적 리사이즈 레이아웃 구조 */
+        .main-wrapper {
+            display: flex; flex-direction: column; width: 100%; min-height: 80vh;
+        }
+
+        .top-section {
+            display: flex; flex-direction: row; height: 620px; min-height: 350px; width: 100%;
+        }
+
+        /* 좌우 구분선 (X축) */
+        .resizer-x {
+            width: 12px; cursor: col-resize; display: flex; align-items: center; justify-content: center;
+            position: relative; z-index: 10; flex-shrink: 0; user-select: none;
+        }
+        .resizer-x::after {
+            content: ''; width: 4px; height: 40px; background: var(--input-border); border-radius: 2px;
+            transition: background 0.2s, height 0.2s;
+        }
+        .resizer-x:hover::after, .resizer-x.active::after {
+            background: var(--accent-deo); height: 60px; width: 6px;
+        }
+
+        /* 상하 구분선 (Y축) */
+        .resizer-y {
+            height: 16px; cursor: row-resize; display: flex; align-items: center; justify-content: center;
+            position: relative; z-index: 10; flex-shrink: 0; user-select: none; margin: 4px 0;
+        }
+        .resizer-y::after {
+            content: ''; height: 4px; width: 60px; background: var(--input-border); border-radius: 2px;
+            transition: background 0.2s, width 0.2s;
+        }
+        .resizer-y:hover::after, .resizer-y.active::after {
+            background: var(--accent-deo); width: 100px; height: 6px;
+        }
+
+        /* 공통 글래스 카드 스타일 */
+        .glass-card {
+            background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 16px;
+            backdrop-filter: blur(12px); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04); padding: 24px;
+        }
+
+        /* 좌측 설정 패널 */
+        .settings-panel {
+            width: 760px; min-width: 420px; max-width: 80%; display: flex; flex-direction: column;
+            gap: 20px; padding: 20px; overflow-y: auto; flex-shrink: 0;
+        }
+        
+        .section-header { font-size: 1.05rem; font-weight: 700; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+        
+        .common-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; }
+        .split-forms { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; transition: all 0.3s; }
+        
+        .spec-card { border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 16px; background: #ffffff; }
+        .spec-card.dust { border-top: 4px solid var(--accent-dust); box-shadow: 0 4px 15px var(--accent-dust-glow); }
+        .spec-card.deo { border-top: 4px solid var(--accent-deo); box-shadow: 0 4px 15px var(--accent-deo-glow); }
+        .spec-card.cylinder { border-top: 4px solid var(--accent-cyl); box-shadow: 0 4px 15px var(--accent-cyl-glow); }
+        .spec-card.cyl-composite { border-top: 4px solid var(--accent-cyl-comp); box-shadow: 0 4px 15px var(--accent-cyl-comp-glow); }
+        .spec-card h3 { font-size: 1rem; }
+
+        /* 세부 타입 좌/우 토글 버튼 스타일 */
+        .subtype-toggle-container {
+            display: flex;
+            gap: 6px;
+            background: #e2e8f0;
+            padding: 4px;
+            border-radius: 12px;
+            border: 1px solid #cbd5e1;
+        }
+        .subtype-btn {
+            flex: 1;
+            padding: 10px 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: #64748b;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+        .subtype-btn:hover {
+            color: #0f172a;
+            background: rgba(255, 255, 255, 0.6);
+        }
+        .subtype-btn.active#btn-sub-single {
+            background: #059669;
+            color: #ffffff;
+            box-shadow: 0 3px 10px rgba(5, 150, 105, 0.35);
+        }
+        .subtype-btn.active#btn-sub-combi {
+            background: #0f172a;
+            color: #38bdf8;
+            box-shadow: 0 3px 10px rgba(15, 23, 42, 0.35);
+        }
+
+        /* 입력 폼 요소 */
+        .preset-group { display: flex; gap: 8px; margin-bottom: 5px; }
+        .preset-btn { flex: 1; padding: 8px 12px; background: #ffffff; border: 1px solid var(--input-border); border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease; }
+        .preset-btn:hover { background: #e2e8f0; }
+
+        .control-group { display: flex; flex-direction: column; gap: 14px; }
+        .input-row { display: flex; flex-direction: column; gap: 6px; }
+        .label-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; font-weight: 600; }
+        .label-row span.unit { color: var(--text-muted); font-size: 0.75rem; }
+        
+        .input-control { display: flex; align-items: center; gap: 10px; }
+        .slider { flex: 1; -webkit-appearance: none; appearance: none; height: 6px; border-radius: 3px; background: #e2e8f0; outline: none; }
+        .slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--accent-main); cursor: pointer; }
+        .dust-slider::-webkit-slider-thumb { background: var(--accent-dust); }
+        .deo-slider::-webkit-slider-thumb { background: var(--accent-deo); }
+        .cyl-slider::-webkit-slider-thumb { background: var(--accent-cyl); }
+        .cyl-comp-slider::-webkit-slider-thumb { background: var(--accent-cyl-comp); }
+
+        .num-input, .text-input-full { padding: 9px 12px; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 8px; font-size: 0.9rem; outline: none; width: 100%; transition: border-color 0.2s; }
+        .num-input { width: 90px; font-weight: 700; text-align: right; }
+        .num-input:focus, .text-input-full:focus { border-color: var(--accent-main); }
+        .num-input[readonly] { background: #f1f5f9; color: #64748b; cursor: not-allowed; }
+        
+        select.text-input-full {
+            appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat; background-position: right 12px center; background-size: 16px; font-weight: 600;
+        }
+
+        /* 결과 표시창 */
+        .result-section { background: rgba(241, 245, 249, 0.8); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; margin-top: auto; }
+        .result-card { display: flex; justify-content: space-between; align-items: center; }
+        .result-label { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; }
+        .result-value { font-size: 1.05rem; font-weight: 700; }
+        .result-value.dust-res { color: var(--accent-dust); }
+        .result-value.deo-res { color: var(--accent-deo); }
+        .result-value.cyl-res { color: var(--accent-cyl); }
+        .result-value.cyl-comp-res { color: var(--accent-cyl-comp); }
+        .v-unit { font-size: 0.75rem; color: var(--text-main); margin-left: 2px; }
+
+        /* 저장 버튼 */
+        .btn { background: var(--accent-main); color: #ffffff; border: none; padding: 14px; border-radius: 10px; font-size: 1rem; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.2s; }
+        .btn:hover { filter: brightness(1.1); transform: translateY(-2px); }
+
+        /* 우측 3D 화면 */
+        .viewer-card {
+            flex: 1; min-width: 350px; position: relative; padding: 0; overflow: hidden;
+            background: radial-gradient(circle at center, #ffffff 0%, #f1f5f9 100%); display: flex;
+        }
+        .canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        
+        .viewer-controls { position: absolute; top: 15px; right: 15px; display: flex; gap: 8px; z-index: 10; }
+        .viewer-btn { width: 36px; height: 36px; border-radius: 8px; background: rgba(255, 255, 255, 0.9); border: 1px solid var(--input-border); cursor: pointer; font-size: 1rem; }
+        .viewer-btn:hover { background: #e2e8f0; }
+
+        .dimension-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .dim-label {
+            position: absolute; transform: translate(-50%, -50%); background: rgba(255, 255, 255, 0.95);
+            border: 1px solid rgba(148, 163, 184, 0.4); padding: 4px 8px; border-radius: 6px;
+            font-size: 0.75rem; color: #0284c7; font-weight: 700; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); display: none; white-space: nowrap;
+        }
+        .view-help { position: absolute; bottom: 15px; left: 15px; background: rgba(255, 255, 255, 0.85); border: 1px solid var(--card-border); padding: 6px 14px; border-radius: 20px; font-size: 0.75rem; color: var(--text-muted); }
+
+        /* 하단 테이블 */
+        .history-card {
+            width: 100%; min-height: 220px; display: flex; flex-direction: column; gap: 15px; overflow-y: auto;
+        }
+        .history-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .table-actions { display: flex; gap: 10px; }
+        .btn-secondary { background: #ffffff; border: 1px solid var(--input-border); padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+        .btn-excel { background: #10b981; color: #ffffff; border: none; }
+        
+        .table-container { width: 100%; overflow-x: auto; border: 1px solid var(--card-border); border-radius: 8px; background: #ffffff; }
+        table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.85rem; }
+        th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; text-align: center; }
+        th { background: #f8fafc; font-weight: 700; color: var(--text-muted); font-size: 0.75rem; border-right: 1px solid #e2e8f0; }
+        td { border-right: 1px solid #e2e8f0; }
+        
+        /* 이력 시트 그룹 스타일 헤더 */
+        .th-group-common { background: #f1f5f9; color: #334155; }
+        .th-group-dust { background: #d1fae5; color: #065f46; }
+        .th-group-deo { background: #dbeafe; color: #1e40af; }
+        .th-group-cyl { background: #f3e8ff; color: #6b21a8; }
+        
+        /* 원통형 복합 세분화 그룹 스타일 */
+        .th-group-cc-main { background: #ffe4e6; color: #881337; font-size: 0.85rem !important; }
+        .th-group-cc-gen { background: #fff1f2; color: #9f1239; }
+        .th-group-cc-dust { background: #fce7f3; color: #9d174d; }
+        .th-group-cc-deo { background: #fdf2f8; color: #881337; }
+
+        tr:hover td { background: #f8fafc; }
+        
+        /* 토스트 */
+        .toast {
+            position: fixed; bottom: 25px; right: 25px; background: #0f172a; color: #ffffff; padding: 12px 20px; border-radius: 10px; font-weight: 600; font-size: 0.9rem;
+            transform: translateY(100px); opacity: 0; transition: all 0.3s; z-index: 100; display: flex; align-items: center; gap: 10px;
+        }
+        .toast.show { transform: translateY(0); opacity: 1; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <i class="fa-solid fa-layer-group"></i>
+            <div><h1>FilterCraft <span>Studio 3D</span></h1></div>
+        </div>
+        <div class="app-desc">공기청정기 필터(판형/원통형/원통형 복합) 설계 및 3D 시각화 대시보드</div>
+    </header>
+
+    <div class="mode-tabs">
+        <button class="tab-btn" data-mode="dust" onclick="switchTab('dust')">
+            <i class="fa-solid fa-wind"></i> 집진필터(단독)or콤비필터
+        </button>
+        <button class="tab-btn" data-mode="deo" onclick="switchTab('deo')">
+            <i class="fa-solid fa-cubes"></i> 탈취필터 (단독)
+        </button>
+        <button class="tab-btn active" data-mode="composite" onclick="switchTab('composite')">
+            <i class="fa-solid fa-layer-group"></i> 복합필터 (평면형)
+        </button>
+        <button class="tab-btn" data-mode="cylinder" onclick="switchTab('cylinder')">
+            <i class="fa-solid fa-circle-notch"></i> 원통형 콤비필터
+        </button>
+        <button class="tab-btn" data-mode="cyl_composite" onclick="switchTab('cyl_composite')">
+            <i class="fa-solid fa-compact-disc"></i> 원통형 복합필터
+        </button>
+    </div>
+
+    <div class="main-wrapper" id="main-wrapper">
+        
+        <div class="top-section" id="top-section">
+            
+            <div class="glass-card settings-panel" id="settings-panel">
+                
+                <div class="common-box" id="flat-common-box">
+                    <div class="section-header"><i class="fa-solid fa-ruler-combined"></i> 평면형 공통 제원 및 식별 정보</div>
+                    <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                        <div class="input-row" style="grid-column: span 2;">
+                            <input type="text" id="filter_label" class="text-input-full" placeholder="예: 2026년형 평면 필터 설계안">
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>가로 (Width)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="w_slider" class="slider" min="100" max="600" step="0.1" value="300" oninput="syncInput('w', this.value, false)">
+                                <input type="number" id="w_num" class="num-input" value="300" step="0.1" oninput="syncInput('w', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>세로 (Length)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="l_slider" class="slider" min="100" max="800" step="0.1" value="400" oninput="syncInput('l', this.value, false)">
+                                <input type="number" id="l_num" class="num-input" value="400" step="0.1" oninput="syncInput('l', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="preset-group" style="grid-column: span 2;">
+                            <button class="preset-btn" onclick="loadPreset('small')">소형 (200x300)</button>
+                            <button class="preset-btn" onclick="loadPreset('medium')">중형 (300x400)</button>
+                            <button class="preset-btn" onclick="loadPreset('large')">대형 (400x550)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="split-forms" id="split-forms-container">
+                    <div class="spec-card dust" id="card-dust">
+                        <h3 style="color: var(--accent-dust);"><i class="fa-solid fa-wind"></i> <span id="dust-card-title-text">집진필터 스펙</span></h3>
+                        <div class="control-group">
+                            <div class="input-row" id="dust_subtype_row">
+                                <div class="label-row"><label style="font-weight: 700;">필터 타입 선택</label></div>
+                                <div class="subtype-toggle-container">
+                                    <button type="button" class="subtype-btn active" id="btn-sub-single" onclick="setDustSubtype('single')">
+                                        <i class="fa-solid fa-filter"></i> 집진필터 (단독)
+                                    </button>
+                                    <button type="button" class="subtype-btn" id="btn-sub-combi" onclick="setDustSubtype('combi')">
+                                        <i class="fa-solid fa-cubes-stacked"></i> 콤비필터 (평면형)
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="input-row">
+                                <div class="label-row"><label>두께 (Thickness)</label><span class="unit">mm</span></div>
+                                <div class="input-control">
+                                    <input type="range" id="dt_slider" class="slider dust-slider" min="10" max="100" step="0.1" value="35" oninput="syncInput('dt', this.value, false)">
+                                    <input type="number" id="dt_num" class="num-input" value="35" step="0.1" oninput="syncInput('dt', this.value, true)">
+                                </div>
+                            </div>
+                            <div class="input-row">
+                                <div class="label-row"><label>산수 (Pleat Count)</label><span class="unit">EA</span></div>
+                                <div class="input-control">
+                                    <input type="range" id="dp_slider" class="slider dust-slider" min="10" max="150" step="0.1" value="60" oninput="syncInput('dp', this.value, false)">
+                                    <input type="number" id="dp_num" class="num-input" value="60" step="0.1" oninput="syncInput('dp', this.value, true)">
+                                </div>
+                            </div>
+                            <div class="input-row" id="dust_carbon_sq_row" style="display:none;">
+                                <div class="label-row"><label>m²당 활성탄 중량</label><span class="unit">g/m²</span></div>
+                                <div class="input-control">
+                                    <input type="range" id="dust_carbon_sq_slider" class="slider dust-slider" min="10" max="500" step="1" value="200" oninput="syncInput('dust_carbon_sq', this.value, false)">
+                                    <input type="number" id="dust_carbon_sq_num" class="num-input" value="200" step="1" oninput="syncInput('dust_carbon_sq', this.value, true)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="result-section">
+                            <div class="result-card">
+                                <span class="result-label">주름 간격 (Pitch)</span>
+                                <span class="result-value dust-res" id="res-dust-pitch">0.00 <span class="v-unit">mm</span></span>
+                            </div>
+                            <div class="result-card">
+                                <span class="result-label">여재 면적</span>
+                                <span class="result-value dust-res" id="res-dust-area">0.00 <span class="v-unit">m²</span></span>
+                            </div>
+                            <div class="result-card" id="res-dust-carbon-card" style="display:none;">
+                                <span class="result-label">탄 중량</span>
+                                <span class="result-value dust-res" id="res-dust-carbon-wt">0.00 <span class="v-unit">g</span></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="spec-card deo" id="card-deo">
+                        <h3 style="color: var(--accent-deo);"><i class="fa-solid fa-cubes"></i> 탈취필터 스펙</h3>
+                        <div class="control-group">
+                            <div class="input-row">
+                                <div class="label-row"><label>구조 타입</label></div>
+                                <select id="deo_structure" class="text-input-full" onchange="triggerUpdate()">
+                                    <option value="싱글허니컴">싱글허니컴</option>
+                                    <option value="더블하이브">더블하이브</option>
+                                </select>
+                            </div>
+                            <div class="input-row">
+                                <div class="label-row"><label>활성탄 종류</label></div>
+                                <select id="deo_carbon" class="text-input-full" onchange="triggerUpdate()">
+                                    <option value="WFT SDB (50%)">WFT SDB (50%)</option>
+                                </select>
+                            </div>
+                            <div class="input-row">
+                                <div class="label-row"><label>두께 (Thickness)</label><span class="unit">mm</span></div>
+                                <div class="input-control">
+                                    <input type="range" id="det_slider" class="slider deo-slider" min="5" max="30" step="0.1" value="11" oninput="syncInput('det', this.value, false)">
+                                    <input type="number" id="det_num" class="num-input" value="11" step="0.1" oninput="syncInput('det', this.value, true)">
+                                </div>
+                            </div>
+                        </div>
+                        <div class="result-section">
+                            <div class="result-card">
+                                <span class="result-label">체적 (Volume)</span>
+                                <span class="result-value deo-res" id="res-deo-vol">0.00 <span class="v-unit">m³</span></span>
+                            </div>
+                            <div class="result-card">
+                                <span class="result-label">중량 / 여유율</span>
+                                <span class="result-value deo-res" id="res-deo-weight">0.00 <span class="v-unit">g / 0%</span></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="spec-card cylinder" id="card-cylinder" style="display:none;">
+                    <h3 style="color: var(--accent-cyl);"><i class="fa-solid fa-circle-notch"></i> 원통형 콤비필터 제원 설정</h3>
+                    <div class="input-row">
+                        <input type="text" id="filter_label_cyl" class="text-input-full" placeholder="예: 2026년형 원통형 콤비 설계안">
+                    </div>
+                    
+                    <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="input-row">
+                            <div class="label-row"><label>외경 (Outer Dia)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="coutd_slider" class="slider cyl-slider" min="100" max="500" step="0.1" value="250" oninput="syncInput('coutd', this.value, false)">
+                                <input type="number" id="coutd_num" class="num-input" value="250" step="0.1" oninput="syncInput('coutd', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>두께 (Thickness)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cthick_slider" class="slider cyl-slider" min="10" max="100" step="0.1" value="40" oninput="syncInput('cthick', this.value, false)">
+                                <input type="number" id="cthick_num" class="num-input" value="40" step="0.1" oninput="syncInput('cthick', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>높이 (Height)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="ch_slider" class="slider cyl-slider" min="100" max="600" step="0.1" value="300" oninput="syncInput('ch', this.value, false)">
+                                <input type="number" id="ch_num" class="num-input" value="300" step="0.1" oninput="syncInput('ch', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>산수 (Pleat Count)</label><span class="unit">EA</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cp_slider" class="slider cyl-slider" min="30" max="300" step="0.1" value="120" oninput="syncInput('cp', this.value, false)">
+                                <input type="number" id="cp_num" class="num-input" value="120" step="0.1" oninput="syncInput('cp', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>높이 공차 (Frame H)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="chtol_slider" class="slider cyl-slider" min="0.5" max="30" step="0.1" value="5" oninput="syncInput('chtol', this.value, false)">
+                                <input type="number" id="chtol_num" class="num-input" value="5" step="0.1" min="0.5" oninput="syncInput('chtol', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>두께 공차 (Frame T)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cttol_slider" class="slider cyl-slider" min="0.5" max="20" step="0.1" value="3" oninput="syncInput('cttol', this.value, false)">
+                                <input type="number" id="cttol_num" class="num-input" value="3" step="0.1" min="0.5" oninput="syncInput('cttol', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row" style="grid-column: span 2;">
+                            <div class="label-row"><label>m²당 활성탄 중량</label><span class="unit">g/m²</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cyl_carbon_sq_slider" class="slider cyl-slider" min="10" max="500" step="1" value="200" oninput="syncInput('cyl_carbon_sq', this.value, false)">
+                                <input type="number" id="cyl_carbon_sq_num" class="num-input" value="200" step="1" oninput="syncInput('cyl_carbon_sq', this.value, true)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="preset-group">
+                        <button class="preset-btn" onclick="loadCylPreset('small')">소형 (Ø200x250)</button>
+                        <button class="preset-btn" onclick="loadCylPreset('medium')">중형 (Ø250x300)</button>
+                        <button class="preset-btn" onclick="loadCylPreset('large')">대형 (Ø300x400)</button>
+                    </div>
+
+                    <div class="result-section">
+                        <div class="result-card">
+                            <span class="result-label">계산 내경 (Inner Dia)</span>
+                            <span class="result-value cyl-res" id="res-cyl-ind">0.00 <span class="v-unit">mm</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">외측 Pitch (Outer)</span>
+                            <span class="result-value cyl-res" id="res-cyl-opitch">0.00 <span class="v-unit">mm</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">내측 Pitch (Inner)</span>
+                            <span class="result-value cyl-res" id="res-cyl-ipitch">0.00 <span class="v-unit">mm</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">여재 면적</span>
+                            <span class="result-value cyl-res" id="res-cyl-area">0.00 <span class="v-unit">m²</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">탄 중량</span>
+                            <span class="result-value cyl-res" id="res-cyl-carbon-wt">0.00 <span class="v-unit">g</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="spec-card cyl-composite" id="card-cyl-composite" style="display:none;">
+                    <h3 style="color: var(--accent-cyl-comp);"><i class="fa-solid fa-compact-disc"></i> 원통형 복합필터 제원 설정</h3>
+                    <div class="input-row">
+                        <input type="text" id="filter_label_cyl_comp" class="text-input-full" placeholder="예: 2026년형 원통형 복합 설계안">
+                    </div>
+                    
+                    <div class="control-group" style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+                        <div class="input-row" style="grid-column: span 2;">
+                            <div class="section-header" style="font-size:0.9rem; color:var(--text-muted); margin-bottom:0;">
+                                <i class="fa-solid fa-ruler-combined"></i> 공통 제원 (필터 프레임 포함 크기)
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>외경 (Outer Dia)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_outd_slider" class="slider cyl-comp-slider" min="100" max="500" step="0.1" value="250" oninput="syncInput('cc_outd', this.value, false)">
+                                <input type="number" id="cc_outd_num" class="num-input" value="250" step="0.1" oninput="syncInput('cc_outd', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>총 두께 (Total Thick)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_thick_slider" class="slider cyl-comp-slider" min="20" max="120" step="0.1" value="50" oninput="syncInput('cc_thick', this.value, false)">
+                                <input type="number" id="cc_thick_num" class="num-input" value="50" step="0.1" oninput="syncInput('cc_thick', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row" style="grid-column: span 2;">
+                            <div class="label-row"><label>높이 (Height)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_h_slider" class="slider cyl-comp-slider" min="100" max="600" step="0.1" value="300" oninput="syncInput('cc_h', this.value, false)">
+                                <input type="number" id="cc_h_num" class="num-input" value="300" step="0.1" oninput="syncInput('cc_h', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>높이 공차 (Frame H)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_htol_slider" class="slider cyl-comp-slider" min="0.5" max="30" step="0.1" value="5" oninput="syncInput('cc_htol', this.value, false)">
+                                <input type="number" id="cc_htol_num" class="num-input" value="5" step="0.1" min="0.5" oninput="syncInput('cc_htol', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>두께 공차 (Frame T)</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_ttol_slider" class="slider cyl-comp-slider" min="0.5" max="20" step="0.1" value="3" oninput="syncInput('cc_ttol', this.value, false)">
+                                <input type="number" id="cc_ttol_num" class="num-input" value="3" step="0.1" min="0.5" oninput="syncInput('cc_ttol', this.value, true)">
+                            </div>
+                        </div>
+
+                        <div class="input-row" style="grid-column: span 2; margin-top:5px;">
+                            <div class="section-header" style="font-size:0.9rem; color:var(--accent-deo); margin-bottom:0;">
+                                <i class="fa-solid fa-cubes"></i> 외측 탈취필터 스펙
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>탈취필터 두께</label><span class="unit">mm</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_deothick_slider" class="slider deo-slider" min="3" max="40" step="0.1" value="12" oninput="syncInput('cc_deothick', this.value, false)">
+                                <input type="number" id="cc_deothick_num" class="num-input" value="12" step="0.1" oninput="syncInput('cc_deothick', this.value, true)">
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>활성탄 종류</label></div>
+                            <select id="cc_carbon" class="text-input-full" onchange="triggerUpdate()">
+                                <option value="WFT SDB (50%)">WFT SDB (50%)</option>
+                            </select>
+                        </div>
+
+                        <div class="input-row" style="grid-column: span 2; margin-top:5px;">
+                            <div class="section-header" style="font-size:0.9rem; color:var(--accent-dust); margin-bottom:0;">
+                                <i class="fa-solid fa-wind"></i> 내측 집진필터 스펙
+                            </div>
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>집진 두께 (자동)</label><span class="unit">mm</span></div>
+                            <input type="number" id="cc_dustthick_num" class="num-input" value="32" readonly style="width:100%;">
+                        </div>
+                        <div class="input-row">
+                            <div class="label-row"><label>산수 (Pleat Count)</label><span class="unit">EA</span></div>
+                            <div class="input-control">
+                                <input type="range" id="cc_p_slider" class="slider dust-slider" min="30" max="300" step="0.1" value="120" oninput="syncInput('cc_p', this.value, false)">
+                                <input type="number" id="cc_p_num" class="num-input" value="120" step="0.1" oninput="syncInput('cc_p', this.value, true)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="preset-group">
+                        <button class="preset-btn" onclick="loadCylCompPreset('small')">소형 (Ø200x250)</button>
+                        <button class="preset-btn" onclick="loadCylCompPreset('medium')">중형 (Ø250x300)</button>
+                        <button class="preset-btn" onclick="loadCylCompPreset('large')">대형 (Ø300x400)</button>
+                    </div>
+
+                    <div class="result-section">
+                        <div class="result-card">
+                            <span class="result-label">탈취 체적 / 중량 / 여유율</span>
+                            <span class="result-value cyl-comp-res" id="res-cc-deo-info">0.00 <span class="v-unit">m³</span> | 0g (0%)</span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">집진 외측 / 내측 Pitch</span>
+                            <span class="result-value cyl-comp-res" id="res-cc-pitches">0.00 / 0.00 <span class="v-unit">mm</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">집진 실제 여재 면적</span>
+                            <span class="result-value cyl-comp-res" id="res-cc-area">0.00 <span class="v-unit">m²</span></span>
+                        </div>
+                        <div class="result-card">
+                            <span class="result-label">내경 (Inner Dia)</span>
+                            <span class="result-value cyl-comp-res" id="res-cc-ind">0.00 <span class="v-unit">mm</span></span>
+                        </div>
+                    </div>
+                </div>
+
+                <button class="btn" id="save-btn" onclick="saveHistory()">
+                    <i class="fa-solid fa-floppy-disk"></i> <span id="save-btn-text">복합필터 설계 이력 추가</span>
+                </button>
+            </div>
+
+            <div class="resizer-x" id="resizer-x" title="좌우 드래그하여 영역 크기 조절"></div>
+
+            <div class="glass-card viewer-card" id="viewer-card">
+                <div class="viewer-controls">
+                    <button class="viewer-btn" title="3D 복사" onclick="copyCanvasToClipboard()"><i class="fa-solid fa-copy"></i></button>
+                    <button class="viewer-btn" title="초기화" onclick="resetCamera()"><i class="fa-solid fa-arrows-rotate"></i></button>
+                    <button class="viewer-btn" id="grid-toggle" onclick="toggleGrid()"><i class="fa-solid fa-border-all"></i></button>
+                </div>
+                
+                <div class="canvas-container" id="canvas-container"></div>
+                
+                <div class="dimension-overlay" id="dimension-overlay">
+                    <div class="dim-label" id="lbl-width">가로 0mm</div>
+                    <div class="dim-label" id="lbl-length">세로 0mm</div>
+                    <div class="dim-label" id="lbl-dust-t">집진두께 0mm</div>
+                    <div class="dim-label" id="lbl-deo-t">탈취두께 0mm</div>
+                    <div class="dim-label" id="lbl-total-t">총두께 0mm</div>
+
+                    <div class="dim-label" id="lbl-c-outer">외경 0mm</div>
+                    <div class="dim-label" id="lbl-c-inner">내경 0mm</div>
+                    <div class="dim-label" id="lbl-c-height">높이 0mm</div>
+                    <div class="dim-label" id="lbl-c-thick">두께 0mm</div>
+                    <div class="dim-label" id="lbl-c-opitch">외측 Pitch 0mm</div>
+                    <div class="dim-label" id="lbl-c-ipitch">내측 Pitch 0mm</div>
+
+                    <div class="dim-label" id="lbl-cc-outer">외경 0mm</div>
+                    <div class="dim-label" id="lbl-cc-inner">내경 0mm</div>
+                    <div class="dim-label" id="lbl-cc-height">높이 0mm</div>
+                    <div class="dim-label" id="lbl-cc-deothick">탈취두께 0mm</div>
+                    <div class="dim-label" id="lbl-cc-dustthick">집진두께 0mm</div>
+                </div>
+                <div class="view-help"><i class="fa-solid fa-circle-info"></i> 마우스 드래그: 회전 | 휠: 확대/축소 | 우클릭 드래그: 이동</div>
+            </div>
+        </div>
+
+        <div class="resizer-y" id="resizer-y" title="상하 드래그하여 영역 크기 조절"></div>
+
+        <div class="glass-card history-card" id="history-card">
+            <div class="history-header">
+                <div style="display:flex; align-items:center; gap:15px; flex-wrap:wrap;">
+                    <h2>설계 및 계산 이력 시트</h2>
+                    <select id="history-filter-select" class="text-input-full" style="width: auto; padding: 7px 14px; font-weight: 700; border-color: var(--accent-deo); background-color: #ffffff;" onchange="filterHistoryTable(this.value)">
+                        <option value="all">전체 필터 시트 (통합)</option>
+                        <option value="dust">집진필터(단독)or콤비필터 (평면)</option>
+                        <option value="deo">탈취필터 (단독)</option>
+                        <option value="composite">복합필터 (평면형)</option>
+                        <option value="cylinder">원통형 콤비필터</option>
+                        <option value="cyl_composite">원통형 복합필터</option>
+                    </select>
+                </div>
+                <div class="table-actions">
+                    <button class="btn-secondary" onclick="deleteSelectedHistory()"><i class="fa-solid fa-trash-can"></i> 삭제</button>
+                    <button class="btn-secondary btn-excel" onclick="exportToExcel()"><i class="fa-solid fa-file-excel"></i> 엑셀 저장</button>
+                </div>
+            </div>
+
+            <div class="table-container">
+                <table id="history-main-table">
+                    <thead>
+                    </thead>
+                    <tbody id="history-body">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast" id="toast">
+        <i class="fa-solid fa-circle-check"></i> <span id="toast-text">성공</span>
+    </div>
+
+    <script>
+        // --- 통합 상태 관리 ---
+        let currentMode = 'composite'; 
+        let historyFilterMode = 'all';
+
+        const state = {
+            // 평면형
+            w: 300,
+            l: 400,
+            dt: 35,
+            dp: 60,
+            det: 11,
+            dust_subtype: 'single', // 'single' 또는 'combi'
+            dust_carbon_sq: 200,    // g/m^2
+
+            // 원통형 콤비
+            coutd: 250,
+            cthick: 40,
+            ch: 300,
+            cp: 120,
+            chtol: 5,
+            cttol: 3,
+            cyl_carbon_sq: 200,     // g/m^2
+
+            // 원통형 복합
+            cc_outd: 250,
+            cc_thick: 50,
+            cc_h: 300,
+            cc_htol: 5,
+            cc_ttol: 3,
+            cc_deothick: 12,
+            cc_p: 120
+        };
+
+        let scene, camera, renderer, controls;
+        let filterMesh, gridHelper, dirGroup;
+        let gridVisible = false;
+        let carbonMeshTex = null;
+
+        // --- 초기화 ---
+        window.addEventListener('load', () => {
+            initThree();
+            initResizers();
+            switchTab('composite');
+            loadHistory();
+            animate();
+        });
+        window.addEventListener('resize', onWindowResize);
+
+        // --- 세부 타입 서브탭 클릭 변경 함수 ---
+        function setDustSubtype(val) {
+            state.dust_subtype = val;
+            toggleDustSubtypeUI(val);
+            triggerUpdate();
+        }
+
+        function toggleDustSubtypeUI(val) {
+            const btnSingle = document.getElementById('btn-sub-single');
+            const btnCombi = document.getElementById('btn-sub-combi');
+            const carbonRow = document.getElementById('dust_carbon_sq_row');
+            const carbonCard = document.getElementById('res-dust-carbon-card');
+
+            if (val === 'combi' && currentMode === 'dust') {
+                if (btnSingle) btnSingle.classList.remove('active');
+                if (btnCombi) btnCombi.classList.add('active');
+                if (carbonRow) carbonRow.style.display = 'flex';
+                if (carbonCard) carbonCard.style.display = 'flex';
+            } else {
+                if (btnSingle) btnSingle.classList.add('active');
+                if (btnCombi) btnCombi.classList.remove('active');
+                if (carbonRow) carbonRow.style.display = 'none';
+                if (carbonCard) carbonCard.style.display = 'none';
+            }
+        }
+
+        // --- 이력 시트 필터 선택 변경 함수 ---
+        function filterHistoryTable(mode) {
+            historyFilterMode = mode;
+            loadHistory();
+        }
+
+        // --- 동적 텍스처 생성 ---
+        function createCarbonMeshTexture() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#111827'; ctx.fillRect(0, 0, 512, 512);
+            for (let i = 0; i < 4000; i++) {
+                ctx.fillStyle = Math.random() > 0.5 ? '#1f2937' : '#030712';
+                ctx.fillRect(Math.random() * 512, Math.random() * 512, 2, 2);
+            }
+            ctx.strokeStyle = '#475569'; ctx.lineWidth = 2.5;
+            const gridStep = 24;
+            for (let x = -512; x < 1024; x += gridStep) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x + 512, 512); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(x, 512); ctx.lineTo(x + 512, 0); ctx.stroke();
+            }
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+            texture.repeat.set(12, 4);
+            return texture;
+        }
+
+        function createSpeckledDustTexture(density = 200) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#ffffff'; 
+            ctx.fillRect(0, 0, 512, 512);
+
+            const speckleCount = Math.floor(Math.max(density, 10) * 6.5);
+
+            for (let i = 0; i < speckleCount; i++) {
+                const x = Math.random() * 512;
+                const y = Math.random() * 512;
+                const rx = Math.random() * 1.8 + 0.8;
+                const ry = rx * (0.6 + Math.random() * 0.8);
+                const angle = Math.random() * Math.PI;
+
+                const shade = Math.floor(Math.random() * 35);
+                const alpha = Math.random() * 0.35 + 0.65;
+
+                ctx.fillStyle = `rgba(${shade}, ${shade}, ${shade}, ${alpha})`;
+                ctx.beginPath();
+                ctx.ellipse(x, y, rx, ry, angle, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            return texture;
+        }
+
+        // --- 탭 전환 로직 ---
+        function switchTab(mode) {
+            currentMode = mode;
+
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.querySelector(`.tab-btn[data-mode="${mode}"]`);
+            if (activeBtn) activeBtn.classList.add('active');
+
+            const flatCommon = document.getElementById('flat-common-box');
+            const dustCard = document.getElementById('card-dust');
+            const deoCard = document.getElementById('card-deo');
+            const cylCard = document.getElementById('card-cylinder');
+            const cylCompCard = document.getElementById('card-cyl-composite');
+            const splitContainer = document.getElementById('split-forms-container');
+            const dustSubtypeRow = document.getElementById('dust_subtype_row');
+            const dustTitleText = document.getElementById('dust-card-title-text');
+
+            const saveBtn = document.getElementById('save-btn');
+
+            if (mode === 'cylinder') {
+                flatCommon.style.display = 'none';
+                splitContainer.style.display = 'none';
+                cylCard.style.display = 'flex';
+                cylCompCard.style.display = 'none';
+                saveBtn.style.background = 'var(--accent-cyl)';
+            } else if (mode === 'cyl_composite') {
+                flatCommon.style.display = 'none';
+                splitContainer.style.display = 'none';
+                cylCard.style.display = 'none';
+                cylCompCard.style.display = 'flex';
+                saveBtn.style.background = 'var(--accent-cyl-comp)';
+            } else {
+                flatCommon.style.display = 'block';
+                splitContainer.style.display = 'grid';
+                cylCard.style.display = 'none';
+                cylCompCard.style.display = 'none';
+
+                if (mode === 'dust') {
+                    dustCard.style.display = 'flex';
+                    deoCard.style.display = 'none';
+                    splitContainer.style.gridTemplateColumns = '1fr';
+                    saveBtn.style.background = 'var(--accent-dust)';
+
+                    if (dustTitleText) dustTitleText.innerText = '집진 / 콤비필터 스펙';
+                    if (dustSubtypeRow) dustSubtypeRow.style.display = 'flex';
+                    toggleDustSubtypeUI(state.dust_subtype);
+
+                } else if (mode === 'deo') {
+                    dustCard.style.display = 'none';
+                    deoCard.style.display = 'flex';
+                    splitContainer.style.gridTemplateColumns = '1fr';
+                    saveBtn.style.background = 'var(--accent-deo)';
+                } else {
+                    dustCard.style.display = 'flex';
+                    deoCard.style.display = 'flex';
+                    splitContainer.style.gridTemplateColumns = '1fr 1fr';
+                    saveBtn.style.background = 'var(--accent-main)';
+
+                    if (dustTitleText) dustTitleText.innerText = '집진필터 스펙';
+                    if (dustSubtypeRow) dustSubtypeRow.style.display = 'none';
+                    toggleDustSubtypeUI('single');
+                }
+            }
+
+            triggerUpdate();
+        }
+
+        // --- 마우스 드래그 리사이저 핸들러 ---
+        function initResizers() {
+            const resizerX = document.getElementById('resizer-x');
+            const resizerY = document.getElementById('resizer-y');
+            const settingsPanel = document.getElementById('settings-panel');
+            const topSection = document.getElementById('top-section');
+            const mainWrapper = document.getElementById('main-wrapper');
+
+            let isResizingX = false, isResizingY = false;
+
+            resizerX.addEventListener('mousedown', () => {
+                isResizingX = true; resizerX.classList.add('active');
+                document.body.style.cursor = 'col-resize'; document.body.style.userSelect = 'none';
+            });
+
+            resizerY.addEventListener('mousedown', () => {
+                isResizingY = true; resizerY.classList.add('active');
+                document.body.style.cursor = 'row-resize'; document.body.style.userSelect = 'none';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isResizingX) {
+                    const sectionRect = topSection.getBoundingClientRect();
+                    let newWidth = e.clientX - sectionRect.left;
+                    if (newWidth < 380) newWidth = 380;
+                    if (newWidth > sectionRect.width - 300) newWidth = sectionRect.width - 300;
+                    settingsPanel.style.width = `${newWidth}px`;
+                    onWindowResize();
+                }
+                if (isResizingY) {
+                    const wrapperRect = mainWrapper.getBoundingClientRect();
+                    let newHeight = e.clientY - wrapperRect.top;
+                    if (newHeight < 300) newHeight = 300;
+                    if (newHeight > window.innerHeight - 200) newHeight = window.innerHeight - 200;
+                    topSection.style.height = `${newHeight}px`;
+                    onWindowResize();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                if (isResizingX || isResizingY) {
+                    isResizingX = false; isResizingY = false;
+                    resizerX.classList.remove('active'); resizerY.classList.remove('active');
+                    document.body.style.cursor = ''; document.body.style.userSelect = '';
+                    onWindowResize();
+                }
+            });
+
+            const viewerCard = document.getElementById('viewer-card');
+            if (window.ResizeObserver && viewerCard) {
+                const ro = new ResizeObserver(() => { onWindowResize(); });
+                ro.observe(viewerCard);
+            }
+        }
+
+        // --- 입력 동기화 로직 ---
+        function syncInput(param, val, isFromNumInput = false) {
+            let numVal = parseFloat(val);
+
+            if ((param === 'chtol' || param === 'cttol' || param === 'cc_htol' || param === 'cc_ttol') && !isNaN(numVal) && numVal < 0.5) {
+                numVal = 0.5;
+            }
+
+            const slider = document.getElementById(`${param}_slider`);
+            const num = document.getElementById(`${param}_num`);
+
+            if (!isFromNumInput && num) num.value = val;
+            if (slider && !isNaN(numVal)) slider.value = numVal;
+
+            if (!isNaN(numVal)) {
+                if (param in state) state[param] = numVal;
+                triggerUpdate();
+            }
+        }
+
+        function loadPreset(size) {
+            const presets = {
+                small: { w: 200, l: 300, dt: 25, dp: 45, det: 11 },
+                medium: { w: 300, l: 400, dt: 35, dp: 60, det: 11 },
+                large: { w: 400, l: 550, dt: 45, dp: 80, det: 11 }
+            };
+            const p = presets[size];
+            syncInput('w', p.w); syncInput('l', p.l); 
+            syncInput('dt', p.dt); syncInput('dp', p.dp); 
+            syncInput('det', p.det);
+            showToast("평면형 프리셋이 로드되었습니다.");
+        }
+
+        function loadCylPreset(size) {
+            const presets = {
+                small: { coutd: 200, cthick: 35, ch: 250, cp: 100, chtol: 4, cttol: 3 },
+                medium: { coutd: 250, cthick: 40, ch: 300, cp: 120, chtol: 5, cttol: 3 },
+                large: { coutd: 300, cthick: 50, ch: 400, cp: 160, chtol: 6, cttol: 4 }
+            };
+            const p = presets[size];
+            syncInput('coutd', p.coutd); syncInput('cthick', p.cthick); 
+            syncInput('ch', p.ch); syncInput('cp', p.cp); 
+            syncInput('chtol', p.chtol); syncInput('cttol', p.cttol);
+            showToast("원통형 프리셋이 로드되었습니다.");
+        }
+
+        function loadCylCompPreset(size) {
+            const presets = {
+                small: { cc_outd: 200, cc_thick: 40, cc_h: 250, cc_deothick: 10, cc_p: 100, cc_htol: 4, cc_ttol: 3 },
+                medium: { cc_outd: 250, cc_thick: 50, cc_h: 300, cc_deothick: 12, cc_p: 120, cc_htol: 5, cc_ttol: 3 },
+                large: { cc_outd: 300, cc_thick: 60, cc_h: 400, cc_deothick: 15, cc_p: 160, cc_htol: 6, cc_ttol: 4 }
+            };
+            const p = presets[size];
+            syncInput('cc_outd', p.cc_outd); syncInput('cc_thick', p.cc_thick);
+            syncInput('cc_h', p.cc_h); syncInput('cc_deothick', p.cc_deothick);
+            syncInput('cc_p', p.cc_p); syncInput('cc_htol', p.cc_htol); syncInput('cc_ttol', p.cc_ttol);
+            showToast("원통형 복합 프리셋이 로드되었습니다.");
+        }
+
+        function triggerUpdate() {
+            updateCalculations();
+            update3DModel();
+        }
+
+        // --- 수식 계산 ---
+        function updateCalculations() {
+            if (currentMode === 'cyl_composite') {
+                const outD = state.cc_outd;
+                const totalThick = state.cc_thick;
+                const h = state.cc_h;
+                const hTol = state.cc_htol;
+                const tTol = state.cc_ttol;
+                const deoThick = state.cc_deothick;
+                const pleatCount = state.cc_p;
+
+                let dustThick = totalThick - deoThick - (tTol * 2);
+                if (dustThick < 1) dustThick = 1;
+                document.getElementById('cc_dustthick_num').value = dustThick.toFixed(1);
+
+                const deoOuterD = outD - (tTol * 2);
+                const deoInnerD = deoOuterD - (deoThick * 2);
+                const dustOuterD = deoInnerD;
+                const dustInnerD = dustOuterD - (dustThick * 2);
+                const calculatedInnerD = dustInnerD - (tTol * 2);
+                const realH = h - (hTol * 2);
+
+                const deoVol = (Math.pow(deoOuterD / 2, 2) - Math.pow(deoInnerD / 2, 2)) * Math.PI * realH / 1000000;
+                const deoWeight = 250 * deoVol / 2.37;
+                const deoRatio = deoWeight > 0 ? (deoVol / deoWeight) * 10000 : 0;
+
+                const dustOuterPitch = (dustOuterD * Math.PI) / pleatCount;
+                const dustInnerPitch = (dustInnerD * Math.PI) / pleatCount;
+                const dustArea = (realH * dustThick * 2 * pleatCount) / 1000000;
+
+                document.getElementById('res-cc-deo-info').innerHTML = `${deoVol.toFixed(2)} <span class="v-unit">m³</span> | ${deoWeight.toFixed(1)}g (${deoRatio.toFixed(1)}%)`;
+                document.getElementById('res-cc-pitches').innerHTML = `${dustOuterPitch.toFixed(2)} / ${dustInnerPitch.toFixed(2)} <span class="v-unit">mm</span>`;
+                document.getElementById('res-cc-area').innerHTML = `${dustArea.toFixed(2)} <span class="v-unit">m²</span>`;
+                document.getElementById('res-cc-ind').innerHTML = `${calculatedInnerD.toFixed(1)} <span class="v-unit">mm</span>`;
+
+                document.getElementById('save-btn-text').innerText = `원통형 복합필터 이력 추가 (외경: Ø${outD.toFixed(1)} mm)`;
+
+            } else if (currentMode === 'cylinder') {
+                const innerD = state.coutd - (state.cthick * 2);
+                const realOuterD = state.coutd - (state.cttol * 2);
+                const realInnerD = innerD + (state.cttol * 2);
+                const realThick = state.cthick - (state.cttol * 2);
+                const realHeight = state.ch - (state.chtol * 2);
+
+                const outerPitch = (realOuterD * Math.PI) / state.cp;
+                const innerPitch = (realInnerD * Math.PI) / state.cp;
+                const mediaArea = (realHeight * realThick * 2 * state.cp) / 1000000;
+
+                const carbonWeight = state.cyl_carbon_sq * mediaArea;
+
+                document.getElementById('res-cyl-ind').innerHTML = `${innerD.toFixed(1)} <span class="v-unit">mm</span>`;
+                document.getElementById('res-cyl-opitch').innerHTML = `${outerPitch.toFixed(2)} <span class="v-unit">mm</span>`;
+                document.getElementById('res-cyl-ipitch').innerHTML = `${innerPitch.toFixed(2)} <span class="v-unit">mm</span>`;
+                document.getElementById('res-cyl-area').innerHTML = `${mediaArea.toFixed(2)} <span class="v-unit">m²</span>`;
+                document.getElementById('res-cyl-carbon-wt').innerHTML = `${carbonWeight.toFixed(1)} <span class="v-unit">g</span>`;
+
+                document.getElementById('save-btn-text').innerText = `원통형 콤비필터 이력 추가 (외경: Ø${state.coutd.toFixed(1)} mm)`;
+            } else {
+                const pitch = state.l / state.dp;
+                const mediaArea = (state.w * (state.dt - 2) * 2 * state.dp) / 1000000;
+                document.getElementById('res-dust-pitch').innerHTML = `${pitch.toFixed(2)} <span class="v-unit">mm</span>`;
+                document.getElementById('res-dust-area').innerHTML = `${mediaArea.toFixed(2)} <span class="v-unit">m²</span>`;
+
+                if (currentMode === 'dust' && state.dust_subtype === 'combi') {
+                    const carbonWeight = state.dust_carbon_sq * mediaArea;
+                    document.getElementById('res-dust-carbon-wt').innerHTML = `${carbonWeight.toFixed(1)} <span class="v-unit">g</span>`;
+                }
+
+                const vol = (state.w * state.l * state.det) / 1000000;
+                let weight = 0;
+                if (state.det === 11) weight = (170 * state.w * state.l) / (276 * 362);
+                else if (state.det === 6) weight = (state.w * state.l * 125) / (240 * 431);
+                else weight = ((170 * state.w * state.l) / (276 * 362)) * (state.det / 11);
+                
+                const ratio = weight > 0 ? ((vol / weight) * 100) * 100 : 0;
+
+                document.getElementById('res-deo-vol').innerHTML = `${vol.toFixed(2)} <span class="v-unit">m³</span>`;
+                document.getElementById('res-deo-weight').innerHTML = `${weight.toFixed(2)} <span class="v-unit">g</span> / ${ratio.toFixed(1)} <span class="v-unit">%</span>`;
+
+                const btnText = document.getElementById('save-btn-text');
+                if (currentMode === 'dust') {
+                    btnText.innerText = (state.dust_subtype === 'combi') ? 
+                        `콤비필터 이력 추가 (두께: ${state.dt.toFixed(1)} mm)` : 
+                        `집진필터 이력 추가 (두께: ${state.dt.toFixed(1)} mm)`;
+                } else if (currentMode === 'deo') {
+                    btnText.innerText = `탈취필터 이력 추가 (두께: ${state.det.toFixed(1)} mm)`;
+                } else {
+                    btnText.innerText = `복합필터 이력 추가 (총 두께: ${(state.dt + state.det).toFixed(1)} mm)`;
+                }
+            }
+        }
+
+        // --- 3D 뷰어 시스템 ---
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 1, 3000);
+            resetCamera();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.localClippingEnabled = true;
+
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(200, 400, 200);
+            scene.add(dirLight);
+
+            gridHelper = new THREE.GridHelper(1000, 50, 0x94a3b8, 0xcbd5e1);
+            gridHelper.position.y = -200; scene.add(gridHelper); gridHelper.visible = gridVisible;
+            dirGroup = new THREE.Group(); scene.add(dirGroup);
+
+            carbonMeshTex = createCarbonMeshTexture();
+        }
+
+        function resetCamera() { camera.position.set(400, 300, 500); if (controls) controls.target.set(0, 0, 0); }
+        function toggleGrid() { gridVisible = !gridVisible; gridHelper.visible = gridVisible; }
+        
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            if (!container || !renderer || !camera) return;
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // --- 3D 모델링 업데이트 ---
+        function update3DModel() {
+            if (filterMesh) scene.remove(filterMesh);
+            while (dirGroup.children.length > 0) dirGroup.remove(dirGroup.children[0]);
+            
+            filterMesh = new THREE.Group();
+            const scale = 0.8;
+
+            const allLabels = [
+                'lbl-width', 'lbl-length', 'lbl-dust-t', 'lbl-deo-t', 'lbl-total-t',
+                'lbl-c-outer', 'lbl-c-inner', 'lbl-c-height', 'lbl-c-thick', 'lbl-c-opitch', 'lbl-c-ipitch',
+                'lbl-cc-outer', 'lbl-cc-inner', 'lbl-cc-height', 'lbl-cc-deothick', 'lbl-cc-dustthick'
+            ];
+            allLabels.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.style.display = 'none';
+            });
+
+            if (currentMode === 'cyl_composite') {
+                const ccMesh = createCylCompositeGroup(
+                    state.cc_outd, state.cc_thick, state.cc_h, state.cc_deothick, state.cc_p, state.cc_htol, state.cc_ttol, scale
+                );
+                filterMesh.add(ccMesh);
+
+                const outR = (state.cc_outd / 2) * scale;
+                const H = state.cc_h * scale;
+
+                const deoOuterD = state.cc_outd - (state.cc_ttol * 2);
+                const deoThick = state.cc_deothick;
+                const deoInnerD = deoOuterD - (deoThick * 2);
+                let dustThick = state.cc_thick - deoThick - (state.cc_ttol * 2);
+                if (dustThick < 1) dustThick = 1;
+                const dustInnerD = deoInnerD - (dustThick * 2);
+                const calculatedInnerD = dustInnerD - (state.cc_ttol * 2);
+
+                const deoOuterR = (deoOuterD / 2) * scale;
+                const deoInnerR = (deoInnerD / 2) * scale;
+                const dustInnerR = (dustInnerD / 2) * scale;
+                const calcInnerR = (calculatedInnerD / 2) * scale;
+
+                drawDimLine(
+                    new THREE.Vector3(-outR, H/2 + 65, 0),
+                    new THREE.Vector3(outR, H/2 + 65, 0),
+                    'lbl-cc-outer', `외경: Ø${state.cc_outd.toFixed(1)} mm`, 0xe11d48
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(deoInnerR, H/2 + 45, 0),
+                    new THREE.Vector3(deoOuterR, H/2 + 45, 0),
+                    'lbl-cc-deothick', `탈취 두께: ${deoThick.toFixed(1)} mm`, 0x2563eb
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(dustInnerR, H/2 + 25, 0),
+                    new THREE.Vector3(deoInnerR, H/2 + 25, 0),
+                    'lbl-cc-dustthick', `집진 두께: ${dustThick.toFixed(1)} mm`, 0x059669
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(-calcInnerR, H/2 + 5, 0),
+                    new THREE.Vector3(calcInnerR, H/2 + 5, 0),
+                    'lbl-cc-inner', `내경: Ø${calculatedInnerD.toFixed(1)} mm`, 0x7c3aed
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(outR + 50, -H/2, 0),
+                    new THREE.Vector3(outR + 50, H/2, 0),
+                    'lbl-cc-height', `높이: ${state.cc_h.toFixed(1)} mm`, 0x0f172a
+                );
+
+            } else if (currentMode === 'cylinder') {
+                const cylMesh = createCylinderGroup(state.coutd, state.cthick, state.ch, state.cp, state.chtol, state.cttol, scale, state.cyl_carbon_sq);
+                filterMesh.add(cylMesh);
+
+                const outerR = (state.coutd / 2) * scale;
+                const innerD = state.coutd - (state.cthick * 2);
+                const innerR = (innerD / 2) * scale;
+                const H = state.ch * scale;
+
+                const realOuterD = state.coutd - (state.cttol * 2);
+                const realInnerD = innerD + (state.cttol * 2);
+                const outerPitch = (realOuterD * Math.PI) / state.cp;
+                const innerPitch = (realInnerD * Math.PI) / state.cp;
+
+                drawDimLine(
+                    new THREE.Vector3(-outerR, H/2 + 60, 0),
+                    new THREE.Vector3(outerR, H/2 + 60, 0),
+                    'lbl-c-outer', `외경: Ø${state.coutd.toFixed(1)} mm`, 0x7c3aed
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(innerR, H/2 + 38, 0),
+                    new THREE.Vector3(outerR, H/2 + 38, 0),
+                    'lbl-c-thick', `두께: ${state.cthick.toFixed(1)} mm`, 0x059669
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(-innerR, H/2 + 16, 0),
+                    new THREE.Vector3(innerR, H/2 + 16, 0),
+                    'lbl-c-inner', `내경: Ø${innerD.toFixed(1)} mm`, 0x2563eb
+                );
+
+                drawDimLine(
+                    new THREE.Vector3(outerR + 50, -H/2, 0),
+                    new THREE.Vector3(outerR + 50, H/2, 0),
+                    'lbl-c-height', `높이: ${state.ch.toFixed(1)} mm`, 0x0f172a
+                );
+
+                const angleOp = Math.PI / state.cp;
+                drawDimLine(
+                    new THREE.Vector3(outerR * Math.cos(0), 30, outerR * Math.sin(0)),
+                    new THREE.Vector3(outerR * Math.cos(angleOp), 30, outerR * Math.sin(angleOp)),
+                    'lbl-c-opitch', `외측 Pitch: ${outerPitch.toFixed(2)} mm`, 0x7c3aed
+                );
+
+                const angleIp = Math.PI / state.cp;
+                drawDimLine(
+                    new THREE.Vector3(innerR * Math.cos(0), -30, innerR * Math.sin(0)),
+                    new THREE.Vector3(innerR * Math.cos(angleIp), -30, innerR * Math.sin(angleIp)),
+                    'lbl-c-ipitch', `내측 Pitch: ${innerPitch.toFixed(2)} mm`, 0x2563eb
+                );
+
+            } else {
+                const W = state.w * scale;
+                const L = state.l * scale;
+
+                let DT = 0;
+                let DET = 0;
+
+                if (currentMode === 'dust' || currentMode === 'composite') DT = state.dt * scale;
+                if (currentMode === 'deo' || currentMode === 'composite') DET = state.det * scale;
+
+                const TotalT = DT + DET;
+                const structType = document.getElementById('deo_structure').value;
+
+                if (DT > 0) {
+                    const isCombi = (currentMode === 'dust' && state.dust_subtype === 'combi');
+                    const carbonDensity = state.dust_carbon_sq;
+                    const dustMesh = createDustGroup(W, L, DT, state.dp, scale, isCombi, carbonDensity);
+                    dustMesh.position.z = (currentMode === 'composite') ? (DET / 2) : 0; 
+                    filterMesh.add(dustMesh);
+                }
+
+                if (DET > 0) {
+                    const deoMesh = createDeoGroup(W, L, DET, structType, scale);
+                    deoMesh.position.z = (currentMode === 'composite') ? (-DT / 2) : 0; 
+                    filterMesh.add(deoMesh);
+                }
+
+                drawDimLine(
+                    new THREE.Vector3(-W/2, -L/2 - 30, -TotalT/2), 
+                    new THREE.Vector3(W/2, -L/2 - 30, -TotalT/2), 
+                    'lbl-width', `가로: ${state.w.toFixed(1)} mm`, 0x0284c7
+                );
+                
+                drawDimLine(
+                    new THREE.Vector3(W/2 + 30, -L/2, -TotalT/2), 
+                    new THREE.Vector3(W/2 + 30, L/2, -TotalT/2), 
+                    'lbl-length', `세로: ${state.l.toFixed(1)} mm`, 0x0284c7
+                );
+
+                if (currentMode === 'dust') {
+                    drawDimLine(
+                        new THREE.Vector3(-W/2 - 25, 0, -DT/2), 
+                        new THREE.Vector3(-W/2 - 25, 0, DT/2), 
+                        'lbl-dust-t', `집진 두께: ${state.dt.toFixed(1)} mm`, 0x059669
+                    );
+                } else if (currentMode === 'deo') {
+                    drawDimLine(
+                        new THREE.Vector3(-W/2 - 25, 0, -DET/2), 
+                        new THREE.Vector3(-W/2 - 25, 0, DET/2), 
+                        'lbl-deo-t', `탈취 두께: ${state.det.toFixed(1)} mm`, 0x2563eb
+                    );
+                } else {
+                    drawDimLine(
+                        new THREE.Vector3(-W/2 - 25, L/2, DET/2 - DT/2), 
+                        new THREE.Vector3(-W/2 - 25, L/2, DET/2 + DT/2), 
+                        'lbl-dust-t', `집진 두께: ${state.dt.toFixed(1)} mm`, 0x059669
+                    );
+                    drawDimLine(
+                        new THREE.Vector3(-W/2 - 25, -L/2, -DT/2 - DET/2), 
+                        new THREE.Vector3(-W/2 - 25, -L/2, -DT/2 + DET/2), 
+                        'lbl-deo-t', `탈취 두께: ${state.det.toFixed(1)} mm`, 0x2563eb
+                    );
+                    drawDimLine(
+                        new THREE.Vector3(-W/2 - 60, 0, -TotalT/2), 
+                        new THREE.Vector3(-W/2 - 60, 0, TotalT/2), 
+                        'lbl-total-t', `총 두께: ${(state.dt + state.det).toFixed(1)} mm`, 0x0f172a
+                    );
+                }
+            }
+
+            scene.add(filterMesh);
+        }
+
+        // 원통형 복합 3D 생성기
+        function createCylCompositeGroup(outD, thick, h, deoThick, dustP, hTol, tTol, scale) {
+            const group = new THREE.Group();
+
+            const totalH = h * scale;
+            const capH = Math.max(hTol * scale, 0.1 * scale);
+            const capWallT = Math.max(tTol * scale, 0.5 * scale);
+            const flangeH = Math.min(10 * scale, Math.max((totalH / 2 - capH) * 0.9, 1));
+
+            const realOuterD = outD - (tTol * 2);
+            const deoOuterR = (realOuterD / 2) * scale;
+            const deoInnerR = Math.max(deoOuterR - (deoThick * scale), 1 * scale);
+
+            let dustThick = thick - deoThick - (tTol * 2);
+            if (dustThick < 1) dustThick = 1;
+            const dustOuterR = deoInnerR;
+            const dustInnerR = Math.max(dustOuterR - (dustThick * scale), 0.5 * scale);
+
+            const capOuterR = (outD / 2) * scale;
+            const calculatedInnerD = (dustInnerR / scale) * 2 - (tTol * 2);
+            const capInnerR = Math.max((calculatedInnerD / 2) * scale, 0.5 * scale);
+            const realH = Math.max((h - hTol * 2) * scale, 0.1);
+
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.1 });
+            const botProfile = [
+                new THREE.Vector2(capInnerR, -totalH / 2),
+                new THREE.Vector2(capOuterR, -totalH / 2),
+                new THREE.Vector2(capOuterR, -totalH / 2 + capH + flangeH),
+                new THREE.Vector2(Math.max(capOuterR - capWallT, capInnerR + 0.1), -totalH / 2 + capH + flangeH),
+                new THREE.Vector2(Math.max(capOuterR - capWallT, capInnerR + 0.1), -totalH / 2 + capH),
+                new THREE.Vector2(capInnerR, -totalH / 2 + capH),
+                new THREE.Vector2(capInnerR, -totalH / 2)
+            ];
+
+            const capGeo = new THREE.LatheGeometry(botProfile, 64);
+            capGeo.computeVertexNormals();
+
+            const botCap = new THREE.Mesh(capGeo, capMat);
+            group.add(botCap);
+
+            const topCap = new THREE.Mesh(capGeo, capMat);
+            topCap.rotation.x = Math.PI;
+            group.add(topCap);
+
+            const deoOuterGeo = new THREE.CylinderGeometry(deoOuterR, deoOuterR, realH, 64, 1, true);
+            const deoOuterMat = new THREE.MeshStandardMaterial({ map: carbonMeshTex, roughness: 0.7, side: THREE.DoubleSide });
+            const deoOuterMesh = new THREE.Mesh(deoOuterGeo, deoOuterMat);
+            group.add(deoOuterMesh);
+
+            const deoInnerGeo = new THREE.CylinderGeometry(deoInnerR, deoInnerR, realH, 64, 1, true);
+            const deoInnerMat = new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.8, side: THREE.DoubleSide });
+            const deoInnerMesh = new THREE.Mesh(deoInnerGeo, deoInnerMat);
+            group.add(deoInnerMesh);
+
+            const ringShape = new THREE.Shape();
+            ringShape.absarc(0, 0, deoOuterR, 0, Math.PI * 2, false);
+            const holePath = new THREE.Path();
+            holePath.absarc(0, 0, deoInnerR, 0, Math.PI * 2, true);
+            ringShape.holes.push(holePath);
+
+            const ringGeo = new THREE.ShapeGeometry(ringShape);
+            const ringMat = new THREE.MeshStandardMaterial({ color: 0x374151, roughness: 0.5, side: THREE.DoubleSide });
+
+            const topRing = new THREE.Mesh(ringGeo, ringMat);
+            topRing.rotation.x = Math.PI / 2; topRing.position.y = realH / 2;
+            group.add(topRing);
+
+            const botRing = new THREE.Mesh(ringGeo, ringMat);
+            botRing.rotation.x = Math.PI / 2; botRing.position.y = -realH / 2;
+            group.add(botRing);
+
+            const geo = new THREE.BufferGeometry();
+            const verts = [], indices = [], uvs = [];
+            const segments = Math.max(Math.round(2 * dustP), 4);
+
+            for (let k = 0; k <= segments; k++) {
+                const angle = (k / segments) * Math.PI * 2;
+                const r = (k % 2 === 0) ? dustOuterR : dustInnerR;
+                const x = r * Math.cos(angle);
+                const z = r * Math.sin(angle);
+                verts.push(x, -realH / 2, z); verts.push(x, realH / 2, z);
+                uvs.push(k * 0.5, 0); uvs.push(k * 0.5, 1);
+            }
+
+            for (let k = 0; k < segments; k++) {
+                const b1 = k * 2, t1 = b1 + 1, b2 = (k + 1) * 2, t2 = b2 + 1;
+                indices.push(b1, t1, t2, b1, t2, b2);
+            }
+
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geo.setIndex(indices); geo.computeVertexNormals();
+
+            const pleatMat = new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.7, side: THREE.DoubleSide });
+            const pleatMesh = new THREE.Mesh(geo, pleatMat);
+
+            const edgeGeo = new THREE.BufferGeometry();
+            edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            pleatMesh.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x64748b, opacity: 0.7, transparent: true })));
+
+            group.add(pleatMesh);
+            return group;
+        }
+
+        // 원통형 콤비 3D 생성기
+        function createCylinderGroup(outD, thick, h, p, hTol, tTol, scale, carbonDensity = 200) {
+            const group = new THREE.Group();
+
+            const outerR = (outD / 2) * scale;
+            const innerD = outD - (thick * 2);
+            const innerR = (innerD / 2) * scale;
+            const totalH = h * scale;
+            
+            const capH = Math.max(hTol * scale, 0.1 * scale);
+            const capWallT = Math.max(tTol * scale, 0.5 * scale);
+            const flangeH = Math.min(10 * scale, Math.max((totalH / 2 - capH) * 0.9, 1));
+
+            const realOuterR = Math.max(outerR - capWallT - 0.15 * scale, 1);
+            const realInnerR = Math.max(innerR + 0.15 * scale, 0.5);
+            const realH = Math.max((h - hTol * 2) * scale, 0.1);
+
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.4, metalness: 0.1 });
+
+            const botProfile = [
+                new THREE.Vector2(innerR, -totalH / 2),
+                new THREE.Vector2(outerR, -totalH / 2),
+                new THREE.Vector2(outerR, -totalH / 2 + capH + flangeH),
+                new THREE.Vector2(Math.max(outerR - capWallT, innerR + 0.1), -totalH / 2 + capH + flangeH),
+                new THREE.Vector2(Math.max(outerR - capWallT, innerR + 0.1), -totalH / 2 + capH),
+                new THREE.Vector2(innerR, -totalH / 2 + capH),
+                new THREE.Vector2(innerR, -totalH / 2)
+            ];
+
+            const capGeo = new THREE.LatheGeometry(botProfile, 64);
+            capGeo.computeVertexNormals();
+
+            const botCap = new THREE.Mesh(capGeo, capMat);
+            group.add(botCap);
+
+            const topCap = new THREE.Mesh(capGeo, capMat);
+            topCap.rotation.x = Math.PI;
+            group.add(topCap);
+
+            const geo = new THREE.BufferGeometry();
+            const verts = [], indices = [], uvs = [];
+            const segments = Math.max(Math.round(2 * p), 4);
+
+            for (let k = 0; k <= segments; k++) {
+                const angle = (k / segments) * Math.PI * 2;
+                const r = (k % 2 === 0) ? realOuterR : realInnerR;
+                const x = r * Math.cos(angle);
+                const z = r * Math.sin(angle);
+                verts.push(x, -realH / 2, z); verts.push(x, realH / 2, z);
+                uvs.push(k * 0.5, 0); uvs.push(k * 0.5, 1);
+            }
+
+            for (let k = 0; k < segments; k++) {
+                const b1 = k * 2, t1 = b1 + 1, b2 = (k + 1) * 2, t2 = b2 + 1;
+                indices.push(b1, t1, t2, b1, t2, b2);
+            }
+
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geo.setIndex(indices); geo.computeVertexNormals();
+
+            const tex = createSpeckledDustTexture(carbonDensity);
+            tex.repeat.set(6, 2);
+
+            const pleatMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide });
+            const pleatMesh = new THREE.Mesh(geo, pleatMat);
+
+            const edgeGeo = new THREE.BufferGeometry();
+            edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            pleatMesh.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: 0x475569, opacity: 0.5, transparent: true })));
+
+            group.add(pleatMesh);
+            return group;
+        }
+
+        // 개별 집진/콤비 Mesh 생성기 (평면형)
+        function createDustGroup(W, L, T, P, scale, isCombi = false, carbonDensity = 200) {
+            const group = new THREE.Group();
+            const frameWidth = 1 * scale; 
+            const actualH = T - (2 * scale);
+            
+            const innerW = W - frameWidth * 2;
+            const innerL = L - frameWidth * 2;
+            
+            const geo = new THREE.BufferGeometry();
+            const verts = [], indices = [], uvs = [];
+            const segments = Math.max(Math.round(2 * P), 4);
+
+            for (let k = 0; k <= segments; k++) {
+                const y = -innerL/2 + k * (innerL / segments);
+                const z = ((k % 2 === 0) ? 1 : -1) * (actualH / 2);
+                verts.push(-innerW/2, y, z, innerW/2, y, z);
+
+                uvs.push(0, k * 0.5);
+                uvs.push(1, k * 0.5);
+            }
+
+            for (let k = 0; k < segments; k++) {
+                const b = k * 2;
+                indices.push(b, b + 1, b + 3, b, b + 3, b + 2);
+            }
+
+            geo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+            geo.setIndex(indices); 
+            geo.computeVertexNormals();
+            
+            let pleatMat;
+            if (isCombi) {
+                const tex = createSpeckledDustTexture(carbonDensity);
+                tex.repeat.set(2, Math.max(P / 4, 1));
+                pleatMat = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.8, side: THREE.DoubleSide });
+            } else {
+                pleatMat = new THREE.MeshStandardMaterial({ color: 0xfafafa, roughness: 0.6, side: THREE.DoubleSide });
+            }
+
+            const pleatMesh = new THREE.Mesh(geo, pleatMat);
+            const edgeGeo = new THREE.BufferGeometry();
+            edgeGeo.setAttribute('position', new THREE.Float32BufferAttribute(verts, 3));
+            pleatMesh.add(new THREE.LineSegments(edgeGeo, new THREE.LineBasicMaterial({ color: isCombi ? 0x64748b : 0xc4c7ce, opacity: 0.6, transparent: true })));
+            group.add(pleatMesh);
+
+            const frameMat = new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.4 });
+            const topBar = new THREE.Mesh(new THREE.BoxGeometry(W, frameWidth, T), frameMat); topBar.position.set(0, L/2 - frameWidth/2, 0);
+            const botBar = new THREE.Mesh(new THREE.BoxGeometry(W, frameWidth, T), frameMat); botBar.position.set(0, -L/2 + frameWidth/2, 0);
+            const leftBar = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, L - frameWidth*2, T), frameMat); leftBar.position.set(-W/2 + frameWidth/2, 0, 0);
+            const rightBar = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, L - frameWidth*2, T), frameMat); rightBar.position.set(W/2 - frameWidth/2, 0, 0);
+            
+            [topBar, botBar, leftBar, rightBar].forEach(b => {
+                b.add(new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry), new THREE.LineBasicMaterial({ color: 0xcbd5e1 })));
+                group.add(b);
+            });
+            return group;
+        }
+
+        // 개별 탈취 Mesh 생성기 (평면형)
+        function createDeoGroup(W, L, T, structType, scale) {
+            const group = new THREE.Group();
+            const isSingle = structType === '싱글허니컴';
+            const frameWidth = 1 * scale; 
+
+            const frameMat = new THREE.MeshStandardMaterial({ color: isSingle ? 0x64748b : 0x334155, roughness: 0.4 });
+            const topBar = new THREE.Mesh(new THREE.BoxGeometry(W, frameWidth, T), frameMat); topBar.position.set(0, L/2 - frameWidth/2, 0);
+            const botBar = new THREE.Mesh(new THREE.BoxGeometry(W, frameWidth, T), frameMat); botBar.position.set(0, -L/2 + frameWidth/2, 0);
+            const leftBar = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, L - frameWidth*2, T), frameMat); leftBar.position.set(-W/2 + frameWidth/2, 0, 0);
+            const rightBar = new THREE.Mesh(new THREE.BoxGeometry(frameWidth, L - frameWidth*2, T), frameMat); rightBar.position.set(W/2 - frameWidth/2, 0, 0);
+            
+            [topBar, botBar, leftBar, rightBar].forEach(b => {
+                b.add(new THREE.LineSegments(new THREE.EdgesGeometry(b.geometry), new THREE.LineBasicMaterial({ color: 0x1e293b })));
+                group.add(b);
+            });
+
+            const innerW = W - frameWidth * 2;
+            const innerL = L - frameWidth * 2;
+            const clipPlanes = [
+                new THREE.Plane(new THREE.Vector3( 1, 0, 0), innerW / 2),
+                new THREE.Plane(new THREE.Vector3(-1, 0, 0), innerW / 2),
+                new THREE.Plane(new THREE.Vector3( 0, 1, 0), innerL / 2),
+                new THREE.Plane(new THREE.Vector3( 0,-1, 0), innerL / 2)
+            ];
+
+            const hexRadius = 4.5 * scale; 
+            const dx = Math.sqrt(3) * hexRadius, dy = 1.5 * hexRadius;
+            const cols = Math.ceil(innerW / dx) + 4, rows = Math.ceil(innerL / dy) + 4;
+            const layers = isSingle ? 1 : 2, layerT = isSingle ? T : T / 2;
+            
+            const wallMat = new THREE.MeshStandardMaterial({ 
+                color: isSingle ? 0x94a3b8 : 0x475569, roughness: 0.5, clippingPlanes: clipPlanes, clipShadows: true, side: THREE.DoubleSide
+            });
+            const wallGeo = new THREE.CylinderGeometry(hexRadius, hexRadius, layerT, 6, 1, true); wallGeo.rotateX(Math.PI / 2);
+            const wallInstanced = new THREE.InstancedMesh(wallGeo, wallMat, cols * rows * layers);
+            
+            let instanceIdx = 0; const dummy = new THREE.Object3D();
+            const startX = -((cols - 1) * dx) / 2, startY = -((rows - 1) * dy) / 2;
+
+            for (let layer = 0; layer < layers; layer++) {
+                const zPos = isSingle ? 0 : (-T/2 + layerT/2 + layer * layerT);
+                const offsetX = (!isSingle && layer === 1) ? dx * 0.5 : 0;
+                const offsetY = (!isSingle && layer === 1) ? dy * 0.5 : 0;
+
+                for (let r = 0; r < rows; r++) {
+                    const rowOffsetX = (r % 2 === 1) ? dx / 2 : 0;
+                    for (let c = 0; c < cols; c++) {
+                        const posX = startX + c * dx + rowOffsetX + offsetX;
+                        const posY = startY + r * dy + offsetY;
+                        
+                        if (Math.abs(posX) <= innerW / 2 + hexRadius && Math.abs(posY) <= innerL / 2 + hexRadius) {
+                            dummy.position.set(posX, posY, zPos);
+                            dummy.rotation.set(0, 0, Math.PI / 6);
+                            dummy.updateMatrix();
+                            wallInstanced.setMatrixAt(instanceIdx++, dummy.matrix);
+                        }
+                    }
+                }
+            }
+            wallInstanced.count = instanceIdx; wallInstanced.instanceMatrix.needsUpdate = true;
+            group.add(wallInstanced);
+            return group;
+        }
+
+        function drawDimLine(start, end, labelId, text, colorHex = 0x0284c7) {
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([start, end]), new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 }));
+            dirGroup.add(line);
+            const domLabel = document.getElementById(labelId);
+            if (domLabel) {
+                domLabel.innerText = text; domLabel.style.display = 'block';
+                domLabel.anchorPosition = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
+                
+                if (labelId.startsWith('lbl-c-') || labelId.startsWith('lbl-cc-')) domLabel.style.color = '#' + colorHex.toString(16).padStart(6, '0');
+                else if (labelId === 'lbl-dust-t') domLabel.style.color = 'var(--accent-dust)';
+                else if (labelId === 'lbl-deo-t') domLabel.style.color = 'var(--accent-deo)';
+                else if (labelId === 'lbl-total-t') domLabel.style.color = '#0f172a';
+                else domLabel.style.color = '#0284c7';
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (controls) controls.update();
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+                updateLabels();
+            }
+        }
+
+        function updateLabels() {
+            const rect = document.getElementById('canvas-container').getBoundingClientRect();
+            const allLabels = [
+                'lbl-width', 'lbl-length', 'lbl-dust-t', 'lbl-deo-t', 'lbl-total-t',
+                'lbl-c-outer', 'lbl-c-inner', 'lbl-c-height', 'lbl-c-thick', 'lbl-c-opitch', 'lbl-c-ipitch',
+                'lbl-cc-outer', 'lbl-cc-inner', 'lbl-cc-height', 'lbl-cc-deothick', 'lbl-cc-dustthick'
+            ];
+            allLabels.forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.style.display !== 'none' && el.anchorPosition) {
+                    const wp = el.anchorPosition.clone().project(camera);
+                    if (wp.z > 1) el.style.display = 'none';
+                    else {
+                        el.style.display = 'block';
+                        el.style.left = `${(wp.x * 0.5 + 0.5) * rect.width}px`;
+                        el.style.top = `${(-wp.y * 0.5 + 0.5) * rect.height}px`;
+                    }
+                }
+            });
+        }
+
+        // --- 3D 이미지 및 치수 캡처 ---
+        function copyCanvasToClipboard() {
+            if (!renderer || !scene || !camera) return;
+            renderer.render(scene, camera);
+
+            const container = document.getElementById('canvas-container');
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            const pixelRatio = renderer.getPixelRatio();
+
+            const offscreen = document.createElement('canvas');
+            offscreen.width = w * pixelRatio;
+            offscreen.height = h * pixelRatio;
+            const ctx = offscreen.getContext('2d');
+
+            const grad = ctx.createRadialGradient(
+                offscreen.width / 2, offscreen.height / 2, 0,
+                offscreen.width / 2, offscreen.height / 2, Math.max(offscreen.width, offscreen.height) / 2
+            );
+            grad.addColorStop(0, '#ffffff');
+            grad.addColorStop(1, '#f1f5f9');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, offscreen.width, offscreen.height);
+
+            ctx.drawImage(renderer.domElement, 0, 0, offscreen.width, offscreen.height);
+
+            ctx.save();
+            ctx.scale(pixelRatio, pixelRatio);
+
+            const labelIds = [
+                'lbl-width', 'lbl-length', 'lbl-dust-t', 'lbl-deo-t', 'lbl-total-t',
+                'lbl-c-outer', 'lbl-c-inner', 'lbl-c-height', 'lbl-c-thick', 'lbl-c-opitch', 'lbl-c-ipitch',
+                'lbl-cc-outer', 'lbl-cc-inner', 'lbl-cc-height', 'lbl-cc-deothick', 'lbl-cc-dustthick'
+            ];
+            labelIds.forEach(id => {
+                const el = document.getElementById(id);
+                if (el && el.style.display !== 'none' && el.anchorPosition) {
+                    const wp = el.anchorPosition.clone().project(camera);
+                    if (wp.z <= 1) {
+                        const x = (wp.x * 0.5 + 0.5) * w;
+                        const y = (-wp.y * 0.5 + 0.5) * h;
+                        const text = el.innerText;
+
+                        ctx.font = 'bold 12px "Noto Sans KR", sans-serif';
+                        const textMetrics = ctx.measureText(text);
+                        const paddingX = 8, paddingY = 4;
+                        const boxW = textMetrics.width + paddingX * 2;
+                        const boxH = 20;
+                        const boxX = x - boxW / 2;
+                        const boxY = y - boxH / 2;
+
+                        ctx.shadowColor = 'rgba(0,0,0,0.08)';
+                        ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+
+                        ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+                        ctx.beginPath();
+                        if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+                        else ctx.rect(boxX, boxY, boxW, boxH);
+                        ctx.fill();
+
+                        ctx.shadowColor = 'transparent';
+                        ctx.strokeStyle = 'rgba(148, 163, 184, 0.6)';
+                        ctx.lineWidth = 1; ctx.stroke();
+
+                        ctx.fillStyle = el.style.color || '#0f172a';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(text, x, y);
+                    }
+                }
+            });
+
+            ctx.restore();
+
+            offscreen.toBlob(blob => {
+                if (!blob) return;
+                try {
+                    navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]).then(() => {
+                        showToast("3D 이미지(치수선 포함)가 복사되었습니다!");
+                    });
+                } catch (e) {
+                    const link = document.createElement('a');
+                    link.download = `Filter_3D_${Date.now()}.png`;
+                    link.href = URL.createObjectURL(blob);
+                    link.click();
+                    showToast("이미지가 파일로 다운로드되었습니다.");
+                }
+            }, "image/png");
+        }
+
+        // --- 계산 이력 관리 ---
+        function deleteSelectedHistory() {
+            const selectedBoxes = document.querySelectorAll('.record-select:checked');
+            if (selectedBoxes.length === 0) {
+                alert("삭제할 항목을 선택하세요.");
+                return;
+            }
+
+            if (confirm(`선택한 ${selectedBoxes.length}개의 설계 이력을 삭제하시겠습니까?`)) {
+                const selectedIds = Array.from(selectedBoxes).map(cb => parseInt(cb.value));
+                let history = JSON.parse(localStorage.getItem('filter_history_v10') || '[]');
+                history = history.filter(item => !selectedIds.includes(item.id));
+                localStorage.setItem('filter_history_v10', JSON.stringify(history));
+
+                loadHistory();
+                showToast("선택한 이력이 삭제되었습니다.");
+            }
+        }
+
+        function saveHistory() {
+            const now = new Date();
+            const timeStr = `${now.getMonth() + 1}/${now.getDate()} ${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+            
+            let labelInput = (currentMode === 'cylinder') ? document.getElementById('filter_label_cyl') :
+                             (currentMode === 'cyl_composite') ? document.getElementById('filter_label_cyl_comp') : document.getElementById('filter_label');
+            let label = labelInput.value.trim() || "미지정 필터";
+
+            let record = {};
+
+            if (currentMode === 'cyl_composite') {
+                const outD = state.cc_outd;
+                const totalThick = state.cc_thick;
+                const h = state.cc_h;
+                const hTol = state.cc_htol;
+                const tTol = state.cc_ttol;
+                const deoThick = state.cc_deothick;
+                const pleatCount = state.cc_p;
+
+                let dustThick = totalThick - deoThick - (tTol * 2);
+                if (dustThick < 1) dustThick = 1;
+
+                const deoOuterD = outD - (tTol * 2);
+                const deoInnerD = deoOuterD - (deoThick * 2);
+                const dustOuterD = deoInnerD;
+                const dustInnerD = dustOuterD - (dustThick * 2);
+                const calculatedInnerD = dustInnerD - (tTol * 2);
+                const realH = h - (hTol * 2);
+
+                const deoVol = (Math.pow(deoOuterD / 2, 2) - Math.pow(deoInnerD / 2, 2)) * Math.PI * realH / 1000000;
+                const deoWeight = 250 * deoVol / 2.37;
+                const dustArea = (realH * dustThick * 2 * pleatCount) / 1000000;
+
+                record = {
+                    id: Date.now(),
+                    label: label,
+                    mode: 'cyl_composite',
+                    typeText: '원통형(복합)',
+                    w: '-', l: '-', total_t: '-',
+                    dt: '-', dp: '-', pitch: '-', area: '-', dust_carbon_wt: '-',
+                    d_struct: '-', det: '-', weight: '-',
+                    cyl_od_id: '-', cyl_h_t: '-', cyl_p: '-', cyl_pitches: '-', cyl_area: '-', cyl_carbon_wt: '-',
+                    
+                    cc_od_id: `Ø${outD.toFixed(1)} / Ø${calculatedInnerD.toFixed(1)}`,
+                    cc_h_t: `${h.toFixed(1)} / ${totalThick.toFixed(1)}`,
+                    cc_dust_t: dustThick.toFixed(1),
+                    cc_dust_p: pleatCount.toFixed(0),
+                    cc_dust_area: dustArea.toFixed(2),
+                    cc_deo_t: deoThick.toFixed(1),
+                    cc_deo_vol_wt: `${deoVol.toFixed(2)}m³ / ${deoWeight.toFixed(1)}g`,
+                    time: timeStr
+                };
+            } else if (currentMode === 'cylinder') {
+                const innerD = state.coutd - (state.cthick * 2);
+                const realOuterD = state.coutd - (state.cttol * 2);
+                const realInnerD = innerD + (state.cttol * 2);
+                const realThick = state.cthick - (state.cttol * 2);
+                const realHeight = state.ch - (state.chtol * 2);
+
+                const outerPitch = (realOuterD * Math.PI) / state.cp;
+                const innerPitch = (realInnerD * Math.PI) / state.cp;
+                const mediaArea = (realHeight * realThick * 2 * state.cp) / 1000000;
+                const carbonWeight = state.cyl_carbon_sq * mediaArea;
+
+                record = {
+                    id: Date.now(),
+                    label: label,
+                    mode: 'cylinder',
+                    typeText: '원통형(콤비)',
+                    w: '-', l: '-', total_t: '-',
+                    dt: '-', dp: '-', pitch: '-', area: '-', dust_carbon_wt: '-',
+                    d_struct: '-', det: '-', weight: '-',
+                    cyl_od_id: `Ø${state.coutd.toFixed(1)} / Ø${innerD.toFixed(1)}`,
+                    cyl_h_t: `${state.ch.toFixed(1)} / ${state.cthick.toFixed(1)}`,
+                    cyl_p: state.cp.toFixed(1),
+                    cyl_pitches: `${outerPitch.toFixed(2)} / ${innerPitch.toFixed(2)}`,
+                    cyl_area: mediaArea.toFixed(2),
+                    cyl_carbon_wt: `${carbonWeight.toFixed(1)}g`,
+                    cc_od_id: '-', cc_h_t: '-', cc_dust_t: '-', cc_dust_p: '-', cc_dust_area: '-', cc_deo_t: '-', cc_deo_vol_wt: '-',
+                    time: timeStr
+                };
+            } else {
+                const mediaArea = (state.w * (state.dt - 2) * 2 * state.dp) / 1000000;
+                const det = state.det;
+                let weight = 0;
+                if (det === 11) weight = (170 * state.w * state.l) / (276 * 362);
+                else if (det === 6) weight = (state.w * state.l * 125) / (240 * 431);
+                else weight = ((170 * state.w * state.l) / (276 * 362)) * (det / 11);
+
+                let typeBadgeText = "복합(평면형)";
+                if (currentMode === 'dust') {
+                    typeBadgeText = (state.dust_subtype === 'combi') ? "콤비(평면형)" : "집진(단독)";
+                } else if (currentMode === 'deo') {
+                    typeBadgeText = "탈취(단독)";
+                }
+
+                const dustCarbonWt = (currentMode === 'dust' && state.dust_subtype === 'combi') ? 
+                    `${(state.dust_carbon_sq * mediaArea).toFixed(1)}g` : '-';
+
+                record = {
+                    id: Date.now(),
+                    label: label,
+                    mode: currentMode,
+                    typeText: typeBadgeText,
+                    w: state.w.toFixed(1),
+                    l: state.l.toFixed(1),
+                    total_t: currentMode === 'dust' ? state.dt.toFixed(1) : (currentMode === 'deo' ? state.det.toFixed(1) : (state.dt + state.det).toFixed(1)),
+                    dt: (currentMode === 'deo') ? '-' : state.dt.toFixed(1),
+                    dp: (currentMode === 'deo') ? '-' : state.dp.toFixed(1),
+                    pitch: (currentMode === 'deo') ? '-' : (state.l / state.dp).toFixed(2),
+                    area: (currentMode === 'deo') ? '-' : mediaArea.toFixed(2),
+                    dust_carbon_wt: dustCarbonWt,
+                    d_struct: (currentMode === 'dust') ? '-' : document.getElementById('deo_structure').value,
+                    det: (currentMode === 'dust') ? '-' : state.det.toFixed(1),
+                    weight: (currentMode === 'dust') ? '-' : weight.toFixed(2),
+                    cyl_od_id: '-', cyl_h_t: '-', cyl_p: '-', cyl_pitches: '-', cyl_area: '-', cyl_carbon_wt: '-',
+                    cc_od_id: '-', cc_h_t: '-', cc_dust_t: '-', cc_dust_p: '-', cc_dust_area: '-', cc_deo_t: '-', cc_deo_vol_wt: '-',
+                    time: timeStr
+                };
+            }
+
+            let history = JSON.parse(localStorage.getItem('filter_history_v10') || '[]');
+            history.push(record);
+            localStorage.setItem('filter_history_v10', JSON.stringify(history));
+
+            loadHistory();
+            showToast(`"${label}" 이력이 저장되었습니다.`);
+            labelInput.value = '';
+        }
+
+        // --- 설계 및 계산 이력 시트 동적 렌더링 ---
+        function loadHistory() {
+            const rawHistory = JSON.parse(localStorage.getItem('filter_history_v10') || '[]');
+            const table = document.getElementById('history-main-table');
+            const thead = table.querySelector('thead');
+            const tbody = document.getElementById('history-body');
+
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+
+            let filteredList = rawHistory.slice().reverse();
+            if (historyFilterMode !== 'all') {
+                filteredList = filteredList.filter(item => item.mode === historyFilterMode);
+            }
+
+            if (historyFilterMode === 'dust') {
+                thead.innerHTML = `
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th style="width: 50px;">No.</th>
+                        <th>유형</th>
+                        <th>식별 정보 (Label)</th>
+                        <th class="th-group-common">가로(W)</th>
+                        <th class="th-group-common">세로(L)</th>
+                        <th class="th-group-common">두께(T)</th>
+                        <th class="th-group-dust">산수(EA)</th>
+                        <th class="th-group-dust">Pitch(mm)</th>
+                        <th class="th-group-dust">여재면적(m²)</th>
+                        <th class="th-group-dust">탄중량(g)</th>
+                        <th>설계 일시</th>
+                    </tr>`;
+            } else if (historyFilterMode === 'deo') {
+                thead.innerHTML = `
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th style="width: 50px;">No.</th>
+                        <th>유형</th>
+                        <th>식별 정보 (Label)</th>
+                        <th class="th-group-common">가로(W)</th>
+                        <th class="th-group-common">세로(L)</th>
+                        <th class="th-group-common">두께(T)</th>
+                        <th class="th-group-deo">구조타입</th>
+                        <th class="th-group-deo">중량(g)</th>
+                        <th>설계 일시</th>
+                    </tr>`;
+            } else if (historyFilterMode === 'composite') {
+                thead.innerHTML = `
+                    <tr>
+                        <th rowspan="2" style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th rowspan="2" style="width: 50px;">No.</th>
+                        <th rowspan="2">유형</th>
+                        <th rowspan="2">식별 정보 (Label)</th>
+                        <th colspan="3" class="th-group-common">평면형 공통</th>
+                        <th colspan="4" class="th-group-dust">집진필터 스펙</th>
+                        <th colspan="3" class="th-group-deo">탈취필터 스펙</th>
+                        <th rowspan="2">설계 일시</th>
+                    </tr>
+                    <tr>
+                        <th class="th-group-common">가로(W)</th>
+                        <th class="th-group-common">세로(L)</th>
+                        <th class="th-group-common">총 두께(T)</th>
+                        <th class="th-group-dust">두께(mm)</th>
+                        <th class="th-group-dust">산수(EA)</th>
+                        <th class="th-group-dust">Pitch(mm)</th>
+                        <th class="th-group-dust">면적(m²)</th>
+                        <th class="th-group-deo">구조타입</th>
+                        <th class="th-group-deo">두께(mm)</th>
+                        <th class="th-group-deo">중량(g)</th>
+                    </tr>`;
+            } else if (historyFilterMode === 'cylinder') {
+                thead.innerHTML = `
+                    <tr>
+                        <th style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th style="width: 50px;">No.</th>
+                        <th>유형</th>
+                        <th>식별 정보 (Label)</th>
+                        <th class="th-group-cyl">외경/내경(mm)</th>
+                        <th class="th-group-cyl">높이/두께(mm)</th>
+                        <th class="th-group-cyl">산수(EA)</th>
+                        <th class="th-group-cyl">외/내Pitch(mm)</th>
+                        <th class="th-group-cyl">여재면적(m²)</th>
+                        <th class="th-group-cyl">탄중량(g)</th>
+                        <th>설계 일시</th>
+                    </tr>`;
+            } else if (historyFilterMode === 'cyl_composite') {
+                thead.innerHTML = `
+                    <tr>
+                        <th rowspan="2" style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th rowspan="2" style="width: 50px;">No.</th>
+                        <th rowspan="2">유형</th>
+                        <th rowspan="2">식별 정보 (Label)</th>
+                        <th colspan="2" class="th-group-cc-gen">전체</th>
+                        <th colspan="3" class="th-group-cc-dust">집진</th>
+                        <th colspan="2" class="th-group-cc-deo">탈취</th>
+                        <th rowspan="2">설계 일시</th>
+                    </tr>
+                    <tr>
+                        <th class="th-group-cc-gen">외경/내경(mm)</th>
+                        <th class="th-group-cc-gen">높이/총두께(mm)</th>
+                        <th class="th-group-cc-dust">집진두께(mm)</th>
+                        <th class="th-group-cc-dust">산수(EA)</th>
+                        <th class="th-group-cc-dust">여재면적(m²)</th>
+                        <th class="th-group-cc-deo">탈취두께(mm)</th>
+                        <th class="th-group-cc-deo">체적/중량</th>
+                    </tr>`;
+            } else {
+                thead.innerHTML = `
+                    <tr>
+                        <th rowspan="3" style="width: 40px;"><input type="checkbox" id="select-all" onclick="toggleSelectAll(this)"></th>
+                        <th rowspan="3" style="width: 50px;">No.</th>
+                        <th rowspan="3">유형</th>
+                        <th rowspan="3">식별 정보 (Label)</th>
+                        <th colspan="3" rowspan="2" class="th-group-common">평면형 제원</th>
+                        <th colspan="5" rowspan="2" class="th-group-dust">집진/콤비필터 스펙</th>
+                        <th colspan="3" rowspan="2" class="th-group-deo">탈취필터 스펙</th>
+                        <th colspan="6" rowspan="2" class="th-group-cyl">원통형 콤비 스펙</th>
+                        <th colspan="7" class="th-group-cc-main">원통형 복합필터</th>
+                        <th rowspan="3">설계 일시</th>
+                    </tr>
+                    <tr>
+                        <th colspan="2" class="th-group-cc-gen">전체</th>
+                        <th colspan="3" class="th-group-cc-dust">집진</th>
+                        <th colspan="2" class="th-group-cc-deo">탈취</th>
+                    </tr>
+                    <tr>
+                        <th class="th-group-common">가로(W)</th>
+                        <th class="th-group-common">세로(L)</th>
+                        <th class="th-group-common">총 두께(T)</th>
+                        
+                        <th class="th-group-dust">두께(mm)</th>
+                        <th class="th-group-dust">산수(EA)</th>
+                        <th class="th-group-dust">Pitch(mm)</th>
+                        <th class="th-group-dust">면적(m²)</th>
+                        <th class="th-group-dust">탄중량(g)</th>
+                        
+                        <th class="th-group-deo">구조타입</th>
+                        <th class="th-group-deo">두께(mm)</th>
+                        <th class="th-group-deo">중량(g)</th>
+                        
+                        <th class="th-group-cyl">외경/내경(mm)</th>
+                        <th class="th-group-cyl">높이/두께(mm)</th>
+                        <th class="th-group-cyl">산수(EA)</th>
+                        <th class="th-group-cyl">외/내Pitch(mm)</th>
+                        <th class="th-group-cyl">여재면적(m²)</th>
+                        <th class="th-group-cyl">탄중량(g)</th>
+                        
+                        <th class="th-group-cc-gen">외경/내경(mm)</th>
+                        <th class="th-group-cc-gen">높이/총두께(mm)</th>
+                        
+                        <th class="th-group-cc-dust">집진두께(mm)</th>
+                        <th class="th-group-cc-dust">산수(EA)</th>
+                        <th class="th-group-cc-dust">여재면적(m²)</th>
+                        
+                        <th class="th-group-cc-deo">탈취두께(mm)</th>
+                        <th class="th-group-cc-deo">체적/중량</th>
+                    </tr>`;
+            }
+
+            if (filteredList.length === 0) {
+                const totalCols = thead.querySelectorAll('tr:last-child th').length || 12;
+                tbody.innerHTML = `<tr><td colspan="${totalCols}" style="text-align:center; padding:30px; color:var(--text-muted);">조건에 해당하는 설계 이력이 없습니다.</td></tr>`;
+                return;
+            }
+
+            filteredList.forEach((item, index) => {
+                let badgeStyle = "background:#f1f5f9; color:#0f172a;";
+                if (item.mode === 'dust') badgeStyle = "background:#d1fae5; color:#065f46;";
+                else if (item.mode === 'deo') badgeStyle = "background:#dbeafe; color:#1e40af;";
+                else if (item.mode === 'cylinder') badgeStyle = "background:#f3e8ff; color:#6b21a8;";
+                else if (item.mode === 'cyl_composite') badgeStyle = "background:#ffe4e6; color:#9f1239;";
+
+                const displayNum = filteredList.length - index;
+                const tr = document.createElement('tr');
+
+                if (historyFilterMode === 'dust') {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        <td style="font-weight:600; color:#334155;">${item.w}</td>
+                        <td style="font-weight:600; color:#334155;">${item.l}</td>
+                        <td style="font-weight:700; color:#0f172a;">${item.total_t}</td>
+                        <td style="color:#065f46;">${item.dp}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.pitch}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.area}</td>
+                        <td style="font-weight:700; color:#047857;">${item.dust_carbon_wt || '-'}</td>
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                } else if (historyFilterMode === 'deo') {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        <td style="font-weight:600; color:#334155;">${item.w}</td>
+                        <td style="font-weight:600; color:#334155;">${item.l}</td>
+                        <td style="font-weight:700; color:#0f172a;">${item.total_t}</td>
+                        <td style="color:#1e40af; font-size:0.8rem;">${item.d_struct}</td>
+                        <td style="font-weight:600; color:#1e40af;">${item.weight}</td>
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                } else if (historyFilterMode === 'composite') {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        <td style="font-weight:600; color:#334155;">${item.w}</td>
+                        <td style="font-weight:600; color:#334155;">${item.l}</td>
+                        <td style="font-weight:700; color:#0f172a;">${item.total_t}</td>
+                        <td style="color:#065f46;">${item.dt}</td>
+                        <td style="color:#065f46;">${item.dp}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.pitch}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.area}</td>
+                        <td style="color:#1e40af; font-size:0.8rem;">${item.d_struct}</td>
+                        <td style="color:#1e40af;">${item.det}</td>
+                        <td style="font-weight:600; color:#1e40af;">${item.weight}</td>
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                } else if (historyFilterMode === 'cylinder') {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        <td style="color:#6b21a8; font-weight:600;">${item.cyl_od_id}</td>
+                        <td style="color:#6b21a8;">${item.cyl_h_t}</td>
+                        <td style="color:#6b21a8;">${item.cyl_p}</td>
+                        <td style="color:#6b21a8; font-weight:600;">${item.cyl_pitches}</td>
+                        <td style="color:#6b21a8; font-weight:700;">${item.cyl_area}</td>
+                        <td style="color:#6b21a8; font-weight:700;">${item.cyl_carbon_wt || '-'}</td>
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                } else if (historyFilterMode === 'cyl_composite') {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        <td style="color:#9f1239; font-weight:600;">${item.cc_od_id}</td>
+                        <td style="color:#9f1239;">${item.cc_h_t}</td>
+                        <td style="color:#9d174d;">${item.cc_dust_t}</td>
+                        <td style="color:#9d174d;">${item.cc_dust_p}</td>
+                        <td style="color:#9d174d; font-weight:600;">${item.cc_dust_area}</td>
+                        <td style="color:#881337;">${item.cc_deo_t}</td>
+                        <td style="color:#881337; font-weight:600;">${item.cc_deo_vol_wt}</td>
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                } else {
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="record-select" value="${item.id}"></td>
+                        <td>${displayNum}</td>
+                        <td><span style="${badgeStyle} padding:3px 8px; border-radius:12px; font-weight:700; font-size:0.75rem;">${item.typeText}</span></td>
+                        <td style="font-weight: 700; text-align:left;">${item.label}</td>
+                        
+                        <td style="font-weight:600; color:#334155;">${item.w}</td>
+                        <td style="font-weight:600; color:#334155;">${item.l}</td>
+                        <td style="font-weight:700; color:#0f172a;">${item.total_t}</td>
+                        
+                        <td style="color:#065f46;">${item.dt}</td>
+                        <td style="color:#065f46;">${item.dp}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.pitch}</td>
+                        <td style="font-weight:600; color:#065f46;">${item.area}</td>
+                        <td style="font-weight:700; color:#047857;">${item.dust_carbon_wt || '-'}</td>
+                        
+                        <td style="color:#1e40af; font-size:0.8rem;">${item.d_struct}</td>
+                        <td style="color:#1e40af;">${item.det}</td>
+                        <td style="font-weight:600; color:#1e40af;">${item.weight}</td>
+                        
+                        <td style="color:#6b21a8; font-weight:600;">${item.cyl_od_id}</td>
+                        <td style="color:#6b21a8;">${item.cyl_h_t}</td>
+                        <td style="color:#6b21a8;">${item.cyl_p}</td>
+                        <td style="color:#6b21a8; font-weight:600;">${item.cyl_pitches}</td>
+                        <td style="color:#6b21a8; font-weight:700;">${item.cyl_area}</td>
+                        <td style="color:#6b21a8; font-weight:700;">${item.cyl_carbon_wt || '-'}</td>
+                        
+                        <td style="color:#9f1239; font-weight:600;">${item.cc_od_id}</td>
+                        <td style="color:#9f1239;">${item.cc_h_t}</td>
+                        <td style="color:#9d174d;">${item.cc_dust_t}</td>
+                        <td style="color:#9d174d;">${item.cc_dust_p}</td>
+                        <td style="color:#9d174d; font-weight:600;">${item.cc_dust_area}</td>
+                        <td style="color:#881337;">${item.cc_deo_t}</td>
+                        <td style="color:#881337; font-weight:600;">${item.cc_deo_vol_wt}</td>
+                        
+                        <td style="color:var(--text-muted); font-size:0.75rem;">${item.time}</td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('select-all').checked = false;
+        }
+
+        function toggleSelectAll(master) { document.querySelectorAll('.record-select').forEach(cb => cb.checked = master.checked); }
+
+        // --- 엑셀 저장 (ExcelJS 사용 - 선택 필터 및 디자인 완벽 반영) ---
+        async function exportToExcel() {
+            const selectedBoxes = document.querySelectorAll('.record-select:checked');
+            if (selectedBoxes.length === 0) { alert("출력할 항목을 선택하세요."); return; }
+
+            const history = JSON.parse(localStorage.getItem('filter_history_v10') || '[]');
+            const selectedIds = Array.from(selectedBoxes).map(cb => parseInt(cb.value));
+            let targetData = history.filter(item => selectedIds.includes(item.id));
+
+            if (historyFilterMode !== 'all') {
+                targetData = targetData.filter(item => item.mode === historyFilterMode);
+            }
+
+            const workbook = new ExcelJS.Workbook();
+            const worksheet = workbook.addWorksheet('필터설계내역');
+
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                left: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                bottom: { style: 'thin', color: { argb: 'FFE2E8F0' } },
+                right: { style: 'thin', color: { argb: 'FFE2E8F0' } }
+            };
+
+            const headerColors = {
+                default: { fill: 'FFF8FAFC', font: 'FF64748B' },
+                common:  { fill: 'FFF1F5F9', font: 'FF334155' },
+                dust:    { fill: 'FFD1FAE5', font: 'FF065F46' },
+                deo:     { fill: 'FFDBEAFE', font: 'FF1E40AF' },
+                cyl:     { fill: 'FFF3E8FF', font: 'FF6B21A8' },
+                ccGen:   { fill: 'FFFF1F2',  font: 'FF9F1239' },
+                ccDust:  { fill: 'FFFCE7F3', font: 'FF9D174D' },
+                ccDeo:   { fill: 'FFFDF2F8', font: 'FF881337' }
+            };
+
+            let headerRowCount = 1;
+            let colWidths = [];
+
+            if (historyFilterMode === 'dust') {
+                headerRowCount = 1;
+                worksheet.addRow(["No.", "유형", "식별 정보 (Label)", "가로(W)", "세로(L)", "두께(T)", "산수(EA)", "Pitch(mm)", "여재면적(m²)", "탄중량(g)", "설계 일시"]);
+                colWidths = [6, 14, 24, 10, 10, 12, 10, 12, 14, 12, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([idx + 1, item.typeText, item.label, item.w, item.l, item.total_t, item.dp, item.pitch, item.area, item.dust_carbon_wt || '-', item.time]);
+                });
+            } else if (historyFilterMode === 'deo') {
+                headerRowCount = 1;
+                worksheet.addRow(["No.", "유형", "식별 정보 (Label)", "가로(W)", "세로(L)", "두께(T)", "구조타입", "중량(g)", "설계 일시"]);
+                colWidths = [6, 14, 24, 10, 10, 12, 14, 12, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([idx + 1, item.typeText, item.label, item.w, item.l, item.total_t, item.d_struct, item.weight, item.time]);
+                });
+            } else if (historyFilterMode === 'composite') {
+                headerRowCount = 2;
+                worksheet.addRow(["No.", "유형", "식별 정보 (Label)", "평면형 공통", "", "", "집진필터 스펙", "", "", "", "탈취필터 스펙", "", "", "설계 일시"]);
+                worksheet.addRow(["", "", "", "가로(W)", "세로(L)", "총 두께(T)", "두께(mm)", "산수(EA)", "Pitch(mm)", "면적(m²)", "구조타입", "두께(mm)", "중량(g)", ""]);
+                worksheet.mergeCells('A1:A2'); worksheet.mergeCells('B1:B2'); worksheet.mergeCells('C1:C2');
+                worksheet.mergeCells('D1:F1'); worksheet.mergeCells('G1:J1'); worksheet.mergeCells('K1:M1'); worksheet.mergeCells('N1:N2');
+                colWidths = [6, 14, 24, 10, 10, 12, 10, 10, 12, 12, 14, 10, 12, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([idx + 1, item.typeText, item.label, item.w, item.l, item.total_t, item.dt, item.dp, item.pitch, item.area, item.d_struct, item.det, item.weight, item.time]);
+                });
+            } else if (historyFilterMode === 'cylinder') {
+                headerRowCount = 1;
+                worksheet.addRow(["No.", "유형", "식별 정보 (Label)", "외경/내경(mm)", "높이/두께(mm)", "산수(EA)", "외/내Pitch(mm)", "여재면적(m²)", "탄중량(g)", "설계 일시"]);
+                colWidths = [6, 14, 24, 18, 16, 10, 18, 14, 12, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([idx + 1, item.typeText, item.label, item.cyl_od_id, item.cyl_h_t, item.cyl_p, item.cyl_pitches, item.cyl_area, item.cyl_carbon_wt || '-', item.time]);
+                });
+            } else if (historyFilterMode === 'cyl_composite') {
+                headerRowCount = 2;
+                worksheet.addRow(["No.", "유형", "식별 정보 (Label)", "원통형 복합 (전체)", "", "원통형 복합 (집진)", "", "", "원통형 복합 (탈취)", "", "설계 일시"]);
+                worksheet.addRow(["", "", "", "외경/내경(mm)", "높이/총두께(mm)", "집진두께(mm)", "산수(EA)", "여재면적(m²)", "탈취두께(mm)", "체적/중량", ""]);
+                worksheet.mergeCells('A1:A2'); worksheet.mergeCells('B1:B2'); worksheet.mergeCells('C1:C2');
+                worksheet.mergeCells('D1:E1'); worksheet.mergeCells('F1:H1'); worksheet.mergeCells('I1:J1'); worksheet.mergeCells('K1:K2');
+                colWidths = [6, 14, 24, 18, 16, 12, 10, 14, 12, 18, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([idx + 1, item.typeText, item.label, item.cc_od_id, item.cc_h_t, item.cc_dust_t, item.cc_dust_p, item.cc_dust_area, item.cc_deo_t, item.cc_deo_vol_wt, item.time]);
+                });
+            } else {
+                headerRowCount = 3;
+                worksheet.addRow([
+                    "No.", "유형", "식별 정보 (Label)",
+                    "평면형 제원", "", "",
+                    "집진/콤비필터 스펙", "", "", "", "",
+                    "탈취필터 스펙", "", "",
+                    "원통형 콤비 스펙", "", "", "", "", "",
+                    "원통형 복합필터", "", "", "", "", "", "",
+                    "설계 일시"
+                ]);
+                worksheet.addRow([
+                    "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", "",
+                    "전체", "", "집진", "", "", "탈취", "", ""
+                ]);
+                worksheet.addRow([
+                    "", "", "",
+                    "가로(W)", "세로(L)", "총 두께(T)",
+                    "두께(mm)", "산수(EA)", "Pitch(mm)", "면적(m²)", "탄중량(g)",
+                    "구조타입", "두께(mm)", "중량(g)",
+                    "외경/내경(mm)", "높이/두께(mm)", "산수(EA)", "외/내Pitch(mm)", "여재면적(m²)", "탄중량(g)",
+                    "외경/내경(mm)", "높이/총두께(mm)",
+                    "집진두께(mm)", "산수(EA)", "여재면적(m²)",
+                    "탈취두께(mm)", "체적/중량",
+                    ""
+                ]);
+
+                worksheet.mergeCells('A1:A3'); worksheet.mergeCells('B1:B3'); worksheet.mergeCells('C1:C3');
+                worksheet.mergeCells('D1:F2'); worksheet.mergeCells('G1:K2'); worksheet.mergeCells('L1:N2'); worksheet.mergeCells('O1:T2');
+                worksheet.mergeCells('U1:AA1'); worksheet.mergeCells('U2:V2'); worksheet.mergeCells('W2:Y2'); worksheet.mergeCells('Z2:AA2');
+                worksheet.mergeCells('AB1:AB3');
+
+                colWidths = [6, 14, 24, 10, 10, 12, 10, 10, 12, 12, 12, 14, 10, 12, 18, 16, 10, 18, 14, 12, 18, 16, 12, 10, 14, 12, 18, 16];
+
+                targetData.forEach((item, idx) => {
+                    worksheet.addRow([
+                        idx + 1, item.typeText, item.label,
+                        item.w, item.l, item.total_t,
+                        item.dt, item.dp, item.pitch, item.area, item.dust_carbon_wt || '-',
+                        item.d_struct, item.det, item.weight,
+                        item.cyl_od_id, item.cyl_h_t, item.cyl_p, item.cyl_pitches, item.cyl_area, item.cyl_carbon_wt || '-',
+                        item.cc_od_id, item.cc_h_t,
+                        item.cc_dust_t, item.cc_dust_p, item.cc_dust_area,
+                        item.cc_deo_t, item.cc_deo_vol_wt,
+                        item.time
+                    ]);
+                });
+            }
+
+            worksheet.columns.forEach((col, idx) => {
+                col.width = colWidths[idx] || 12;
+            });
+
+            // 헤더 스타일 적용 (배경색 및 폰트)
+            for (let r = 1; r <= headerRowCount; r++) {
+                const row = worksheet.getRow(r);
+                row.height = 22;
+                row.eachCell((cell, colNumber) => {
+                    cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+                    cell.border = thinBorder;
+
+                    let styleInfo = headerColors.default;
+
+                    if (historyFilterMode === 'dust') {
+                        if (colNumber >= 4 && colNumber <= 6) styleInfo = headerColors.common;
+                        else if (colNumber >= 7 && colNumber <= 10) styleInfo = headerColors.dust;
+                    } else if (historyFilterMode === 'deo') {
+                        if (colNumber >= 4 && colNumber <= 6) styleInfo = headerColors.common;
+                        else if (colNumber >= 7 && colNumber <= 8) styleInfo = headerColors.deo;
+                    } else if (historyFilterMode === 'composite') {
+                        if (colNumber >= 4 && colNumber <= 6) styleInfo = headerColors.common;
+                        else if (colNumber >= 7 && colNumber <= 10) styleInfo = headerColors.dust;
+                        else if (colNumber >= 11 && colNumber <= 13) styleInfo = headerColors.deo;
+                    } else if (historyFilterMode === 'cylinder') {
+                        if (colNumber >= 4 && colNumber <= 9) styleInfo = headerColors.cyl;
+                    } else if (historyFilterMode === 'cyl_composite') {
+                        if (colNumber >= 4 && colNumber <= 5) styleInfo = headerColors.ccGen;
+                        else if (colNumber >= 6 && colNumber <= 8) styleInfo = headerColors.ccDust;
+                        else if (colNumber >= 9 && colNumber <= 10) styleInfo = headerColors.ccDeo;
+                    } else {
+                        if (colNumber >= 4 && colNumber <= 6) styleInfo = headerColors.common;
+                        else if (colNumber >= 7 && colNumber <= 11) styleInfo = headerColors.dust;
+                        else if (colNumber >= 12 && colNumber <= 14) styleInfo = headerColors.deo;
+                        else if (colNumber >= 15 && colNumber <= 20) styleInfo = headerColors.cyl;
+                        else if (colNumber >= 21 && colNumber <= 22) styleInfo = headerColors.ccGen;
+                        else if (colNumber >= 23 && colNumber <= 25) styleInfo = headerColors.ccDust;
+                        else if (colNumber >= 26 && colNumber <= 27) styleInfo = headerColors.ccDeo;
+                    }
+
+                    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: styleInfo.fill } };
+                    cell.font = { name: 'Noto Sans KR', size: 9, bold: true, color: { argb: styleInfo.font } };
+                });
+            }
+
+            // 데이터 행 스타일 적용 (배지 색상 및 컬럼별 글자색)
+            const totalRows = worksheet.rowCount;
+            for (let r = headerRowCount + 1; r <= totalRows; r++) {
+                const row = worksheet.getRow(r);
+                const item = targetData[r - headerRowCount - 1];
+                row.height = 22;
+
+                row.eachCell((cell, colNumber) => {
+                    cell.border = thinBorder;
+                    cell.alignment = { vertical: 'middle', horizontal: (colNumber === 3 ? 'left' : 'center') };
+                    cell.font = { name: 'Noto Sans KR', size: 9 };
+
+                    if (colNumber === 2 && item) {
+                        let badgeFill = 'FFF1F5F9', badgeFont = 'FF0F172A';
+                        if (item.mode === 'dust') { badgeFill = 'FFD1FAE5'; badgeFont = 'FF065F46'; }
+                        else if (item.mode === 'deo') { badgeFill = 'FFDBEAFE'; badgeFont = 'FF1E40AF'; }
+                        else if (item.mode === 'cylinder') { badgeFill = 'FFF3E8FF'; badgeFont = 'FF6B21A8'; }
+                        else if (item.mode === 'cyl_composite') { badgeFill = 'FFFEE2E2'; badgeFont = 'FF9F1239'; }
+
+                        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: badgeFill } };
+                        cell.font = { name: 'Noto Sans KR', size: 9, bold: true, color: { argb: badgeFont } };
+                    } else if (colNumber === 3) {
+                        cell.font = { name: 'Noto Sans KR', size: 9, bold: true };
+                    } else {
+                        if (historyFilterMode === 'dust') {
+                            if (colNumber >= 4 && colNumber <= 6) cell.font.color = { argb: 'FF334155' };
+                            else if (colNumber >= 7 && colNumber <= 10) cell.font.color = { argb: 'FF065F46' };
+                        } else if (historyFilterMode === 'deo') {
+                            if (colNumber >= 4 && colNumber <= 6) cell.font.color = { argb: 'FF334155' };
+                            else if (colNumber >= 7 && colNumber <= 8) cell.font.color = { argb: 'FF1E40AF' };
+                        } else if (historyFilterMode === 'composite') {
+                            if (colNumber >= 4 && colNumber <= 6) cell.font.color = { argb: 'FF334155' };
+                            else if (colNumber >= 7 && colNumber <= 10) cell.font.color = { argb: 'FF065F46' };
+                            else if (colNumber >= 11 && colNumber <= 13) cell.font.color = { argb: 'FF1E40AF' };
+                        } else if (historyFilterMode === 'cylinder') {
+                            if (colNumber >= 4 && colNumber <= 9) cell.font.color = { argb: 'FF6B21A8' };
+                        } else if (historyFilterMode === 'cyl_composite') {
+                            if (colNumber >= 4 && colNumber <= 5) cell.font.color = { argb: 'FF9F1239' };
+                            else if (colNumber >= 6 && colNumber <= 8) cell.font.color = { argb: 'FF9D174D' };
+                            else if (colNumber >= 9 && colNumber <= 10) cell.font.color = { argb: 'FF881337' };
+                        } else {
+                            if (colNumber >= 4 && colNumber <= 6) cell.font.color = { argb: 'FF334155' };
+                            else if (colNumber >= 7 && colNumber <= 11) cell.font.color = { argb: 'FF065F46' };
+                            else if (colNumber >= 12 && colNumber <= 14) cell.font.color = { argb: 'FF1E40AF' };
+                            else if (colNumber >= 15 && colNumber <= 20) cell.font.color = { argb: 'FF6B21A8' };
+                            else if (colNumber >= 21 && colNumber <= 22) cell.font.color = { argb: 'FF9F1239' };
+                            else if (colNumber >= 23 && colNumber <= 25) cell.font.color = { argb: 'FF9D174D' };
+                            else if (colNumber >= 26 && colNumber <= 27) cell.font.color = { argb: 'FF881337' };
+                        }
+                    }
+                });
+            }
+
+            const buffer = await workbook.xlsx.writeBuffer();
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Filter_Design_${new Date().toISOString().slice(0, 10)}.xlsx`;
+            link.click();
+            showToast("HTML 표의 배경색/폰트/디자인이 반영된 엑셀 파일이 내보내졌습니다.");
+        }
+
+        function showToast(msg) {
+            const toast = document.getElementById('toast'); document.getElementById('toast-text').innerText = msg;
+            toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 3000);
+        }
+    </script>
+</body>
+</html>
